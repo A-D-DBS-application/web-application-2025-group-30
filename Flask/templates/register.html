@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <title>Registreren</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 500px; margin: 40px auto; }
+    .field { margin-bottom: 1rem; }
+    label { display: block; margin-bottom: 0.25rem; }
+    input[type="text"], input[type="email"], input[type="password"] {
+      width: 100%; padding: 0.5rem; box-sizing: border-box;
+    }
+    button {
+      padding: 0.5rem 1rem; cursor: pointer;
+    }
+    .flash { padding: 0.5rem; margin-bottom: 1rem; border-radius: 4px; }
+    .flash.error { background-color: #ffe0e0; }
+    .flash.success { background-color: #e0ffe0; }
+  </style>
+</head>
+<body>
+
+  <h1>Registreer</h1>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="flash {{ category }}">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <form method="POST" action="{{ url_for('register') }}">
+    <div class="field">
+      <label for="full_name">Volledige naam</label>
+      <input type="text" id="full_name" name="full_name"
+             value="{{ full_name or '' }}" required>
+    </div>
+
+    <div class="field">
+      <label for="email">E-mailadres</label>
+      <input type="email" id="email" name="email"
+             value="{{ email or '' }}" required>
+    </div>
+
+    <div class="field">
+      <label for="password">Wachtwoord</label>
+      <input type="password" id="password" name="password" required>
+    </div>
+
+    <button type="submit">Account aanmaken</button>
+  </form>
+
+</body>
+</html>

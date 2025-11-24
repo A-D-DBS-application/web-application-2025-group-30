@@ -270,4 +270,4 @@ if __name__ == "__main__":
     for s in recommendations:
         print(
             f"- Shift {s.id}: {s.event_type}, role={s.role}, slot={s.time_slot}, "
-            f"loc={s.location}, duur={s.duration_hours}u"
+            f"loc={s.location}, duur={s.duration_hours}u")
