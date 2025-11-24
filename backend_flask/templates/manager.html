@@ -1,0 +1,51 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="container">
+    <div class="card">
+        <h2>
+            Events Management
+            <button id="openCreateEventModal" class="btn btn-primary">+ Create Event</button>
+        </h2>
+        <div id="eventsList">
+            <p style="text-align: center; color: var(--text-light);">Loading events...</p>
+        </div>
+    </div>
+</div>
+
+<!-- Create Event Modal -->
+<div id="createEventModal" class="modal">
+    <div class="modal-content">
+        <span class="close-modal" id="closeCreateEventModal">&times;</span>
+        <h2 style="margin-top: 0; border: none;">Create New Event</h2>
+        <form id="createEventForm">
+            <div class="form-group">
+                <label>Title</label>
+                <input type="text" name="title" placeholder="e.g. Wedding Service" required>
+            </div>
+            <div class="form-group">
+                <label>Description</label>
+                <textarea name="description" rows="3" placeholder="Event details..."></textarea>
+            </div>
+            <div class="form-group">
+                <label>Date</label>
+                <input type="date" name="date" required>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div class="form-group">
+                    <label>Start Time</label>
+                    <input type="time" name="start_time" required>
+                </div>
+                <div class="form-group">
+                    <label>End Time</label>
+                    <input type="time" name="end_time" required>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Personnel Needed</label>
+                <input type="number" name="capacity" min="1" value="1" required>
+            </div>
+            <button type="submit" class="btn btn-primary" style="width: 100%;">Create Event</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

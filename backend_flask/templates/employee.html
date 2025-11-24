@@ -1,0 +1,22 @@
+{% extends "layout.html" %}
+{% block content %}
+    <section class="card">
+        <h2>Employee Dashboard</h2>
+        <p>Welcome — this is your employee view. Use the Dashboard to submit availability and see assigned shifts.</p>
+        <h3>Your Shifts</h3>
+        <ul id="shiftsList"></ul>
+    </section>
+
+    <section class="card">
+        <h3>Submit Availability</h3>
+        <form id="availabilityForm">
+            <label>Start</label>
+            <input id="availStart" required />
+            <label>End</label>
+            <input id="availEnd" required />
+            <label>Note</label>
+            <input id="availNote" />
+            <button type="submit">Submit Availability</button>
+        </form>
+    </section>
+{% endblock %}

@@ -1,0 +1,8 @@
+fastapi==0.95.2
+uvicorn==0.22.0
+pyjwt==2.8.0
+bcrypt==4.0.1
+python-dotenv==1.0.0
+pydantic==1.10.11
+# Optional if you want async Mongo later:
+# motor==3.1.1
