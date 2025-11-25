@@ -4,7 +4,25 @@
     <div class="card">
         <h2>My Shifts</h2>
         <div id="myShiftsList">
-            <p style="color: var(--text-light);">Loading your shifts...</p>
+            {% if not my_shifts %}
+                <p style="color: var(--text-light);">No shifts assigned yet.</p>
+            {% else %}
+                {% for event in my_shifts %}
+                    <div class="event-item">
+                        <div class="event-header">
+                            <span class="event-title">{{ event.title }}</span>
+                            <span class="event-meta">{{ event.start.split('T')[0] }}</span>
+                        </div>
+                        <p>{{ event.description or '' }}</p>
+                        <div class="event-meta">
+                            <strong>Location:</strong> {{ event.location or 'Not specified' }}
+                        </div>
+                        <div class="event-meta">
+                            {{ event.start.split('T')[1] }} - {{ event.end.split('T')[1] }}
+                        </div>
+                    </div>
+                {% endfor %}
+            {% endif %}
         </div>
     </div>
 
@@ -12,26 +30,58 @@
         <h2>Available Shifts</h2>
         <p style="color: var(--text-light); margin-bottom: 1rem;">Subscribe to shifts you are available for.</p>
         <div id="availableShiftsList">
-            <p style="color: var(--text-light);">Loading available shifts...</p>
+            {% if not available_shifts %}
+                <p style="color: var(--text-light);">No available shifts.</p>
+            {% else %}
+                {% for event in available_shifts %}
+                    {% set is_pending = user.id in event.get('pending', []) %}
+                    {% set is_full = event.assigned|length >= event.capacity|int %}
+                    
+                    <div class="event-item">
+                        <div class="event-header">
+                            <span class="event-title">{{ event.title }}</span>
+                            <span class="event-meta">{{ event.start.split('T')[0] }}</span>
+                        </div>
+                        <p>{{ event.description or '' }}</p>
+                        <div class="event-meta">
+                            <strong>Location:</strong> {{ event.location or 'Not specified' }}
+                        </div>
+                        <div class="event-meta">
+                            {{ event.start.split('T')[1] }} - {{ event.end.split('T')[1] }}
+                        </div>
+                        <div class="event-actions">
+                            {% if is_pending %}
+                                <span class="btn btn-secondary" style="cursor: default;">Pending Approval...</span>
+                            {% elif is_full %}
+                                <span style="color: var(--text-light);">Full</span>
+                            {% else %}
+                                <form action="/events/{{ event.id }}/subscribe" method="POST">
+                                    <button type="submit" class="btn btn-primary">I'm Available</button>
+                                </form>
+                            {% endif %}
+                        </div>
+                    </div>
+                {% endfor %}
+            {% endif %}
         </div>
     </div>
 
     <div class="card">
         <h2>Manage Availability</h2>
-        <form id="availabilityForm">
+        <form action="/availability/submit" method="POST">
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
                 <div class="form-group">
                     <label>Start Date/Time</label>
-                    <input type="datetime-local" id="availStart" required>
+                    <input type="datetime-local" name="start" required>
                 </div>
                 <div class="form-group">
                     <label>End Date/Time</label>
-                    <input type="datetime-local" id="availEnd" required>
+                    <input type="datetime-local" name="end" required>
                 </div>
             </div>
             <div class="form-group">
                 <label>Note (Optional)</label>
-                <input type="text" id="availNote" placeholder="e.g. Prefer morning shifts">
+                <input type="text" name="note" placeholder="e.g. Prefer morning shifts">
             </div>
             <button type="submit" class="btn btn-secondary">Submit Availability</button>
         </form>

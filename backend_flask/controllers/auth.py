@@ -1,5 +1,5 @@
 import os
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, session, redirect, url_for, render_template
 import jwt
 import bcrypt
 from models import create_user, find_user_by_username, get_user_public
@@ -10,25 +10,42 @@ ALGORITHM = "HS256"
 
 @auth_bp.route("/register", methods=["POST"])
 def register():
-    data = request.get_json() or {}
+    # Support both JSON and Form data
+    data = request.get_json(silent=True) or request.form
     username = data.get("username")
     role = data.get("role", "employee")
+    
     if not username:
-        return jsonify({"error": "username required"}), 400
+        return render_template("login.html", error="Username required")
+        
     if find_user_by_username(username):
-        return jsonify({"error": "user exists"}), 400
+        return render_template("login.html", error="User exists")
+        
     # No password required for registration; store empty password
     user = create_user(username, "", role)
-    return jsonify(get_user_public(user)), 201
+    
+    # Auto login
+    session["user_id"] = user["id"]
+    
+    if role == "manager":
+        return redirect(url_for("manager"))
+    return redirect(url_for("dashboard"))
 
 @auth_bp.route("/login", methods=["POST"])
 def login():
-    data = request.get_json() or {}
+    data = request.get_json(silent=True) or request.form
     username = data.get("username")
+    
     if not username:
-        return jsonify({"error": "username required"}), 400
+        return render_template("login.html", error="Username required")
+        
     user = find_user_by_username(username)
     if not user:
-        return jsonify({"error": "invalid credentials"}), 401
-    token = jwt.encode({"sub": user["id"]}, SECRET, algorithm=ALGORITHM)
-    return jsonify({"access_token": token, "token_type": "bearer"})
+        return render_template("login.html", error="Invalid credentials")
+        
+    session["user_id"] = user["id"]
+    
+    if user.get("role") == "manager":
+        return redirect(url_for("manager"))
+    return redirect(url_for("dashboard"))
+

@@ -8,17 +8,21 @@
 </head>
 <body>
   <header>
-    <h1>Personnel Scheduler — Flask UI (v2)</h1>
+    <h1>Personnel Scheduler</h1>
     <nav>
-      <a href="/">Login</a> |
-      <a href="/dashboard">Dashboard</a> |
-      <a href="/manager">Manager</a>
+      {% if session.get('user_id') %}
+        <a href="/dashboard">Dashboard</a>
+        {% if user and user.role == 'manager' %}
+          <a href="/manager">Manager</a>
+        {% endif %}
+        <a href="/logout">Logout</a>
+      {% else %}
+        <a href="/">Login</a>
+      {% endif %}
     </nav>
   </header>
-  <!-- TEMPLATE_VERSION: v2 - layout.html -->
   <main>
     {% block content %}{% endblock %}
   </main>
-  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>
 </html>
