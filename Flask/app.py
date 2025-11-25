@@ -11,8 +11,8 @@ from supabase import create_client, Client
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+SUPABASE_URL = os.getenv("https://rflzgpbuvokvlzaqrige.supabase.co")
+SUPABASE_KEY = os.getenv("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJmbHpncGJ1dm9rdmx6YXFyaWdlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA4OTQwMDUsImV4cCI6MjA3NjQ3MDAwNX0.g_-QLpllGBnZDfQ51oUtN8FYhAWQASfJCgOkY1-jMoY")
 
 if not SUPABASE_URL or not SUPABASE_KEY:
     raise RuntimeError("SUPABASE_URL of SUPABASE_KEY ontbreekt in venv")
@@ -20,7 +20,7 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 app = Flask(__name__)
-app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-secret-key")  # voor flash() etc.
+app.secret_key = os.getenv("Groep30", "dev-secret-key")  # voor flash() etc.
 
 
 # -------------------------------------------------
