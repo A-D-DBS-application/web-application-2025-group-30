@@ -1,4 +1,35 @@
 import os
+import importlib.util as _importlib_util
+import pkgutil as _pkgutil
+
+# Python 3.12+ removed `pkgutil.get_loader`. Flask's package-finding
+# code still calls it, so provide a small compatibility shim that
+# returns an object with the attributes Flask expects.
+if not hasattr(_pkgutil, "get_loader"):
+    def _get_loader(name):
+        try:
+            spec = _importlib_util.find_spec(name)
+        except (ImportError, ValueError):
+            return None
+        if spec is None:
+            return None
+
+        class _CompatLoader:
+            def __init__(self, spec):
+                self._spec = spec
+                # some loaders expose an `archive` attribute (zipimport).
+                self.archive = None
+
+            def get_filename(self, mod_name):
+                return self._spec.origin
+
+            def is_package(self, mod_name):
+                return bool(self._spec.submodule_search_locations)
+
+        return _CompatLoader(spec)
+
+    _pkgutil.get_loader = _get_loader
+
 from flask import Flask, jsonify, render_template
 from controllers.auth import auth_bp
 from controllers.users import users_bp
