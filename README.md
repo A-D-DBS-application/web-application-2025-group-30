@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # Personnel Scheduler
 
 This project is a web application designed to optimize personnel allocation. It includes features for user authentication, event management, and employee availability management.
@@ -77,5 +76,3 @@ personnel-scheduler
 ## Contributing
 
 Contributions are welcome! Please open an issue or submit a pull request for any improvements or bug fixes.
-=======
-

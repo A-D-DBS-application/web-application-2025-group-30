@@ -2,50 +2,114 @@
 {% block content %}
 <div class="container">
     <div class="card">
-        <h2>
-            Events Management
-            <button id="openCreateEventModal" class="btn btn-primary">+ Create Event</button>
-        </h2>
-        <div id="eventsList">
-            <p style="text-align: center; color: var(--text-light);">Loading events...</p>
-        </div>
+        <h2>Create New Event</h2>
+        <details>
+            <summary class="btn btn-primary" style="display: inline-block; cursor: pointer;">+ Open Event Form</summary>
+            <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #eee;">
+                <form action="/events/create" method="POST">
+                    <div class="form-group">
+                        <label>Title</label>
+                        <input type="text" name="title" placeholder="e.g. Wedding Service" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Description</label>
+                        <textarea name="description" rows="3" placeholder="Event details..."></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Date</label>
+                        <input type="date" name="date" required>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                        <div class="form-group">
+                            <label>Start Time</label>
+                            <input type="time" name="start_time" required>
+                        </div>
+                        <div class="form-group">
+                            <label>End Time</label>
+                            <input type="time" name="end_time" required>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Location (Room)</label>
+                        <input type="text" name="location" placeholder="e.g. Main Hall, Room 101" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Personnel Needed</label>
+                        <input type="number" name="capacity" min="1" value="1" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="width: 100%;">Create Event</button>
+                </form>
+            </div>
+        </details>
     </div>
-</div>
 
-<!-- Create Event Modal -->
-<div id="createEventModal" class="modal">
-    <div class="modal-content">
-        <span class="close-modal" id="closeCreateEventModal">&times;</span>
-        <h2 style="margin-top: 0; border: none;">Create New Event</h2>
-        <form id="createEventForm">
-            <div class="form-group">
-                <label>Title</label>
-                <input type="text" name="title" placeholder="e.g. Wedding Service" required>
-            </div>
-            <div class="form-group">
-                <label>Description</label>
-                <textarea name="description" rows="3" placeholder="Event details..."></textarea>
-            </div>
-            <div class="form-group">
-                <label>Date</label>
-                <input type="date" name="date" required>
-            </div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-                <div class="form-group">
-                    <label>Start Time</label>
-                    <input type="time" name="start_time" required>
-                </div>
-                <div class="form-group">
-                    <label>End Time</label>
-                    <input type="time" name="end_time" required>
-                </div>
-            </div>
-            <div class="form-group">
-                <label>Personnel Needed</label>
-                <input type="number" name="capacity" min="1" value="1" required>
-            </div>
-            <button type="submit" class="btn btn-primary" style="width: 100%;">Create Event</button>
-        </form>
+    <div class="card">
+        <h2>Events Management</h2>
+        <div id="eventsList">
+            {% if not events %}
+                <p style="text-align: center; color: var(--text-light);">No events found.</p>
+            {% else %}
+                {% for event in events %}
+                    {% set assigned_count = event.assigned|length %}
+                    {% set capacity = event.capacity|int %}
+                    {% set progress = (assigned_count / capacity * 100)|round|int %}
+                    {% if progress > 100 %}{% set progress = 100 %}{% endif %}
+                    
+                    <div class="event-item card">
+                        <div class="event-header">
+                            <span class="event-title">{{ event.title }}</span>
+                            <span class="event-meta">{{ event.start.split('T')[0] }}</span>
+                        </div>
+                        <p>{{ event.description or 'No description' }}</p>
+                        <div class="event-meta">
+                            <strong>Location:</strong> {{ event.location or 'Not specified' }}
+                        </div>
+                        <div class="event-meta">
+                            {{ event.start.split('T')[1] }} - {{ event.end.split('T')[1] }}
+                        </div>
+                        
+                        <div class="progress-container">
+                            <div class="progress-bar" style="width: {{ progress }}%"></div>
+                        </div>
+                        <div class="progress-text">
+                            <span>{{ assigned_count }} / {{ capacity }} Assigned</span>
+                        </div>
+
+                        {% if event.pending %}
+                            <div class="pending-list">
+                                <strong>Pending Requests:</strong>
+                                {% for uid in event.pending %}
+                                    <div class="pending-item">
+                                        <span>User ID: {{ uid[:8] }}...</span>
+                                        <form action="/events/{{ event.id }}/confirm" method="POST" style="display:inline;">
+                                            <input type="hidden" name="user_id" value="{{ uid }}">
+                                            <button type="submit" class="btn btn-success btn-sm" style="padding: 2px 8px; font-size: 0.8rem;">Confirm</button>
+                                        </form>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+
+                        {% if assigned_count < capacity %}
+                            <div class="pending-list" style="margin-top: 1rem; border-top: 1px solid #eee; padding-top: 1rem;">
+                                <strong>Direct Assignment:</strong>
+                                <form action="/events/{{ event.id }}/assign" method="POST" style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
+                                    <select name="user_id" required style="flex: 1; padding: 0.4rem; border: 1px solid var(--border); border-radius: 4px;">
+                                        <option value="">Select employee...</option>
+                                        {% for emp in employees %}
+                                            {% if emp.id not in event.assigned %}
+                                                <option value="{{ emp.id }}">{{ emp.username }}</option>
+                                            {% endif %}
+                                        {% endfor %}
+                                    </select>
+                                    <button type="submit" class="btn btn-primary btn-sm" style="padding: 0.4rem 1rem;">Assign</button>
+                                </form>
+                            </div>
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            {% endif %}
+        </div>
     </div>
 </div>
 {% endblock %}
