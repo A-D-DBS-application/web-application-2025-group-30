@@ -1,5 +1,5 @@
 import os
-from flask import Flask, jsonify, render_template, session, redirect, url_for
+from flask import Flask, jsonify, render_template, session, redirect, url_for, request
 from controllers.auth import auth_bp
 from controllers.users import users_bp
 from controllers.events import events_bp
@@ -42,6 +42,11 @@ def dashboard():
         session.clear()
         return redirect(url_for("index"))
 
+    # Get month/year parameters or use current date
+    from datetime import datetime
+    month = request.args.get('month', type=int) or datetime.now().month
+    year = request.args.get('year', type=int) or datetime.now().year
+
     # Prepare data for the template
     all_events = list_events()
     my_shifts = [e for e in all_events if user["id"] in (e.get("assigned") or [])]
@@ -51,7 +56,7 @@ def dashboard():
         if user["id"] not in (e.get("assigned") or []):
             available_shifts.append(e)
 
-    return render_template("dashboard.html", user=user, my_shifts=my_shifts, available_shifts=available_shifts)
+    return render_template("dashboard.html", user=user, my_shifts=my_shifts, available_shifts=available_shifts, month=month, year=year)
 
 
 @app.route("/manager")
@@ -63,11 +68,16 @@ def manager():
     if not user or user.get("role") != "manager":
         return redirect(url_for("dashboard"))
 
+    # Get month/year parameters or use current date
+    from datetime import datetime
+    month = request.args.get('month', type=int) or datetime.now().month
+    year = request.args.get('year', type=int) or datetime.now().year
+
     all_events = list_events()
     all_users = list_users()
     # Filter to only employees
     employees = [u for u in all_users if u.get("role") == "employee"]
-    return render_template("manager.html", user=user, events=all_events, employees=employees)
+    return render_template("manager.html", user=user, events=all_events, employees=employees, month=month, year=year)
 
 
 @app.route("/logout")

@@ -89,6 +89,54 @@ def list_events():
     res = supabase.table("events").select("*").execute()
     return res.data
 
+def get_event_by_id(event_id: str):
+    if not supabase:
+        return _MEM_EVENTS.get(event_id)
+    
+    res = supabase.table("events").select("*").eq("id", event_id).execute()
+    if res.data:
+        return res.data[0]
+    return None
+
+def update_event(event_id: str, data: Dict) -> bool:
+    event_data = {}
+    if "title" in data:
+        event_data["title"] = data.get("title")
+    if "description" in data:
+        event_data["description"] = data.get("description", "")
+    if "start" in data:
+        event_data["start"] = data.get("start")
+    if "end" in data:
+        event_data["end"] = data.get("end")
+    if "capacity" in data:
+        event_data["capacity"] = int(data.get("capacity", 1))
+    if "location" in data:
+        event_data["location"] = data.get("location", "")
+    if "type" in data:
+        event_data["type"] = data.get("type", "general")
+    if "hours" in data:
+        event_data["hours"] = data.get("hours", "")
+    
+    if not supabase:
+        event = _MEM_EVENTS.get(event_id)
+        if event:
+            event.update(event_data)
+            return True
+        return False
+    
+    res = supabase.table("events").update(event_data).eq("id", event_id).execute()
+    return res.data is not None and len(res.data) > 0
+
+def delete_event(event_id: str) -> bool:
+    if not supabase:
+        if event_id in _MEM_EVENTS:
+            del _MEM_EVENTS[event_id]
+            return True
+        return False
+    
+    res = supabase.table("events").delete().eq("id", event_id).execute()
+    return True
+
 def assign_user_to_event(event_id: str, user_id: str) -> bool:
     if not supabase:
         event = _MEM_EVENTS.get(event_id)

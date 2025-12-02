@@ -1,273 +1,350 @@
-from dataclasses import dataclass, field
-from collections import Counter
-from typing import List, Optional, Dict, Tuple
-import numpy as np
+"""
+Conflict Detection Algorithm for Personnel Scheduler
+
+This module identifies scheduling conflicts automatically by:
+1. Checking for overlapping shifts for the same employee
+2. Detecting employees assigned to impossible time combinations
+3. Alerting managers before conflicts are created
+4. Validating shift assignments against employee availability
+
+The algorithm can be integrated with the Flask backend to prevent
+scheduling errors before they occur.
+"""
+
+from datetime import datetime, timedelta
+from typing import List, Dict, Optional, Set, Tuple
 
 
-# -----------------------------
-# Datamodellen
-# -----------------------------
+class SchedulingConflict:
+    """Represents a detected scheduling conflict"""
+    
+    def __init__(self, conflict_type: str, message: str, employee_id: str, 
+                 event_ids: List[str], severity: str = "warning"):
+        self.conflict_type = conflict_type
+        self.message = message
+        self.employee_id = employee_id
+        self.event_ids = event_ids
+        self.severity = severity  # "warning" or "error"
+    
+    def to_dict(self):
+        """Convert conflict to dictionary for API responses"""
+        return {
+            "type": self.conflict_type,
+            "message": self.message,
+            "employee_id": self.employee_id,
+            "event_ids": self.event_ids,
+            "severity": self.severity
+        }
+    
+    def __repr__(self):
+        return f"Conflict({self.conflict_type}, employee={self.employee_id}, events={self.event_ids})"
 
-@dataclass
-class Shift:
+
+class ConflictDetector:
     """
-    Een shift/optie in de zaal.
+    Main conflict detection engine that validates shift assignments
+    and identifies scheduling problems before they occur
     """
-    id: int
-    event_type: str        # bv. "trouw", "receptie", "bedrijfsfeest"
-    role: str              # bv. "bar", "zaal", "opbouw", "afbraak"
-    time_slot: str         # bv. "ochtend", "namiddag", "avond", "nacht"
-    weekday: str           # bv. "ma-do", "vr-zo"
-    location: str          # bv. "zaal A", "zaal B"
-    duration_hours: float  # bv. 5.0
-
-    # Wordt later opgevuld door encode_shift_features()
-    feature_vector: Optional[np.ndarray] = field(default=None, repr=False)
-
-
-@dataclass
-class Employee:
-    """
-    Werknemer die shifts kiest.
-    """
-    id: int
-    name: str
-    # Id’s van patronen/shifts die expliciet als favoriet zijn aangeduid.
-    favorite_shift_ids: List[int] = field(default_factory=list)
-
-
-# -----------------------------
-# Feature encoding
-# -----------------------------
-
-class FeatureEncoder:
-    """
-    Encodet Shifts naar numerieke vectors met one-hot encoding voor categorieën.
-    """
-
-    def __init__(self):
-        # Definitie van mogelijke categorieën
-        self.event_types = ["trouw", "receptie", "bedrijfsfeest"]
-        self.roles = ["bar", "zaal", "opbouw", "afbraak", "allround"]
-        self.time_slots = ["ochtend", "namiddag", "avond", "nacht"]
-        self.weekdays = ["ma-do", "vr-zo"]
-        self.locations = ["zaal A", "zaal B", "zaal C"]
-
-        # Bereken totale lengte van de feature vector
-        self.size = (
-            len(self.event_types)
-            + len(self.roles)
-            + len(self.time_slots)
-            + len(self.weekdays)
-            + len(self.locations)
-            + 1  # duration_hours (genormaliseerd)
-        )
-
-    def encode(self, shift: Shift) -> np.ndarray:
+    
+    def __init__(self, min_break_hours: float = 8.0, max_daily_hours: float = 12.0):
         """
-        Encodeer één shift naar een feature vector.
+        Initialize conflict detector with configurable thresholds
+        
+        Args:
+            min_break_hours: Minimum hours required between shifts (default 8)
+            max_daily_hours: Maximum hours an employee can work per day (default 12)
         """
-        vec = np.zeros(self.size, dtype=float)
-        idx = 0
-
-        # event_type
-        for et in self.event_types:
-            if shift.event_type == et:
-                vec[idx] = 1.0
-            idx += 1
-
-        # role
-        for r in self.roles:
-            if shift.role == r:
-                vec[idx] = 1.0
-            idx += 1
-
-        # time_slot
-        for ts in self.time_slots:
-            if shift.time_slot == ts:
-                vec[idx] = 1.0
-            idx += 1
-
-        # weekday
-        for wd in self.weekdays:
-            if shift.weekday == wd:
-                vec[idx] = 1.0
-            idx += 1
-
-        # location
-        for loc in self.locations:
-            if shift.location == loc:
-                vec[idx] = 1.0
-            idx += 1
-
-        # duration_hours: simpele normalisatie bv. delen door 10
-        vec[idx] = shift.duration_hours / 10.0
-
-        return vec
-
-    def encode_shifts(self, shifts: List[Shift]) -> None:
+        self.min_break_hours = min_break_hours
+        self.max_daily_hours = max_daily_hours
+    
+    def detect_all_conflicts(self, events: List[dict], employees: List[dict] = None) -> List[SchedulingConflict]:
         """
-        Vul feature_vector in bij alle gegeven shifts.
+        Detect all scheduling conflicts across all events and employees
+        
+        Args:
+            events: List of event dictionaries with keys: id, title, start, end, assigned
+            employees: Optional list of employee dictionaries (can be used for availability checks)
+        
+        Returns:
+            List of SchedulingConflict objects describing all detected conflicts
         """
-        for s in shifts:
-            s.feature_vector = self.encode(s)
+        conflicts = []
+        
+        # Build employee-to-events mapping
+        employee_events = self._build_employee_schedule(events)
+        
+        # Check each employee's schedule for conflicts
+        for employee_id, assigned_events in employee_events.items():
+            # Sort events by start time
+            sorted_events = sorted(assigned_events, key=lambda e: e['start'])
+            
+            # Check for overlapping shifts
+            conflicts.extend(self._check_overlapping_shifts(employee_id, sorted_events))
+            
+            # Check for insufficient break time
+            conflicts.extend(self._check_insufficient_breaks(employee_id, sorted_events))
+            
+            # Check for excessive daily hours
+            conflicts.extend(self._check_daily_hours(employee_id, sorted_events))
+        
+        return conflicts
+    
+    def check_new_assignment(self, employee_id: str, new_event: dict, 
+                            existing_events: List[dict]) -> List[SchedulingConflict]:
+        """
+        Check if assigning an employee to a new event would create conflicts
+        Use this before confirming a shift assignment
+        
+        Args:
+            employee_id: ID of employee to assign
+            new_event: Event dictionary with keys: id, title, start, end
+            existing_events: List of events where employee is already assigned
+        
+        Returns:
+            List of conflicts that would be created (empty list if no conflicts)
+        """
+        conflicts = []
+        
+        # Filter existing events for this specific employee
+        employee_existing = [e for e in existing_events 
+                           if employee_id in e.get('assigned', [])]
+        
+        # Create temporary combined list with new event
+        all_events = employee_existing + [new_event]
+        sorted_events = sorted(all_events, key=lambda e: e['start'])
+        
+        # Check all conflict types
+        conflicts.extend(self._check_overlapping_shifts(employee_id, sorted_events))
+        conflicts.extend(self._check_insufficient_breaks(employee_id, sorted_events))
+        conflicts.extend(self._check_daily_hours(employee_id, sorted_events))
+        
+        # Filter to only conflicts involving the new event
+        return [c for c in conflicts if new_event['id'] in c.event_ids]
+    
+    def _build_employee_schedule(self, events: List[dict]) -> Dict[str, List[dict]]:
+        """Build mapping of employee_id -> list of assigned events"""
+        schedule = {}
+        
+        for event in events:
+            assigned = event.get('assigned', [])
+            for employee_id in assigned:
+                if employee_id not in schedule:
+                    schedule[employee_id] = []
+                schedule[employee_id].append(event)
+        
+        return schedule
+    
+    def _check_overlapping_shifts(self, employee_id: str, 
+                                  events: List[dict]) -> List[SchedulingConflict]:
+        """Detect if employee has overlapping shift times"""
+        conflicts = []
+        
+        for i in range(len(events)):
+            for j in range(i + 1, len(events)):
+                event_a = events[i]
+                event_b = events[j]
+                
+                # Parse datetime strings
+                start_a = self._parse_datetime(event_a['start'])
+                end_a = self._parse_datetime(event_a['end'])
+                start_b = self._parse_datetime(event_b['start'])
+                end_b = self._parse_datetime(event_b['end'])
+                
+                # Check for overlap: A starts before B ends AND A ends after B starts
+                if start_a < end_b and end_a > start_b:
+                    conflicts.append(SchedulingConflict(
+                        conflict_type="overlapping_shifts",
+                        message=f"Employee has overlapping shifts: '{event_a['title']}' and '{event_b['title']}'",
+                        employee_id=employee_id,
+                        event_ids=[event_a['id'], event_b['id']],
+                        severity="error"
+                    ))
+        
+        return conflicts
+    
+    def _check_insufficient_breaks(self, employee_id: str, 
+                                   events: List[dict]) -> List[SchedulingConflict]:
+        """Detect if employee has insufficient break time between consecutive shifts"""
+        conflicts = []
+        
+        for i in range(len(events) - 1):
+            current_event = events[i]
+            next_event = events[i + 1]
+            
+            current_end = self._parse_datetime(current_event['end'])
+            next_start = self._parse_datetime(next_event['start'])
+            
+            # Calculate break time in hours
+            break_time = (next_start - current_end).total_seconds() / 3600
+            
+            if 0 < break_time < self.min_break_hours:
+                conflicts.append(SchedulingConflict(
+                    conflict_type="insufficient_break",
+                    message=f"Only {break_time:.1f} hours between '{current_event['title']}' and '{next_event['title']}' (minimum: {self.min_break_hours}h)",
+                    employee_id=employee_id,
+                    event_ids=[current_event['id'], next_event['id']],
+                    severity="warning"
+                ))
+        
+        return conflicts
+    
+    def _check_daily_hours(self, employee_id: str, 
+                          events: List[dict]) -> List[SchedulingConflict]:
+        """Detect if employee exceeds maximum daily working hours"""
+        conflicts = []
+        
+        # Group events by date
+        daily_events = {}
+        for event in events:
+            start = self._parse_datetime(event['start'])
+            date_key = start.date()
+            
+            if date_key not in daily_events:
+                daily_events[date_key] = []
+            daily_events[date_key].append(event)
+        
+        # Check each day's total hours
+        for date, day_events in daily_events.items():
+            total_hours = 0
+            event_ids = []
+            
+            for event in day_events:
+                start = self._parse_datetime(event['start'])
+                end = self._parse_datetime(event['end'])
+                duration = (end - start).total_seconds() / 3600
+                total_hours += duration
+                event_ids.append(event['id'])
+            
+            if total_hours > self.max_daily_hours:
+                event_titles = [e['title'] for e in day_events]
+                conflicts.append(SchedulingConflict(
+                    conflict_type="excessive_daily_hours",
+                    message=f"Employee works {total_hours:.1f} hours on {date} (maximum: {self.max_daily_hours}h): {', '.join(event_titles)}",
+                    employee_id=employee_id,
+                    event_ids=event_ids,
+                    severity="warning"
+                ))
+        
+        return conflicts
+    
+    def _parse_datetime(self, dt_string: str) -> datetime:
+        """Parse datetime string in ISO format or common formats"""
+        # Try ISO format first
+        try:
+            return datetime.fromisoformat(dt_string.replace('Z', '+00:00'))
+        except:
+            pass
+        
+        # Try common formats
+        formats = [
+            "%Y-%m-%d %H:%M:%S",
+            "%Y-%m-%dT%H:%M:%S",
+            "%Y-%m-%d %H:%M",
+            "%Y-%m-%dT%H:%M"
+        ]
+        
+        for fmt in formats:
+            try:
+                return datetime.strptime(dt_string, fmt)
+            except:
+                continue
+        
+        raise ValueError(f"Could not parse datetime string: {dt_string}")
 
 
-# -----------------------------
-# Hulpfuncties voor profielen
-# -----------------------------
+# Utility functions for easy integration
 
-def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
+def validate_assignment(employee_id: str, event: dict, all_events: List[dict], 
+                       min_break_hours: float = 8.0, max_daily_hours: float = 12.0) -> Tuple[bool, List[dict]]:
     """
-    Cosinusgelijkenis tussen twee vectors.
+    Validate if assigning an employee to an event would create conflicts
+    
+    Args:
+        employee_id: ID of employee to assign
+        event: Event dictionary to assign employee to
+        all_events: All events in the system
+        min_break_hours: Minimum break time between shifts
+        max_daily_hours: Maximum working hours per day
+    
+    Returns:
+        Tuple of (is_valid, list of conflict dictionaries)
     """
-    if a is None or b is None:
-        return 0.0
-    norm_a = np.linalg.norm(a)
-    norm_b = np.linalg.norm(b)
-    if norm_a == 0 or norm_b == 0:
-        return 0.0
-    return float(np.dot(a, b) / (norm_a * norm_b))
+    detector = ConflictDetector(min_break_hours, max_daily_hours)
+    conflicts = detector.check_new_assignment(employee_id, event, all_events)
+    
+    return len(conflicts) == 0, [c.to_dict() for c in conflicts]
 
 
-def build_user_profile(past_shifts: List[Shift]) -> Optional[np.ndarray]:
+def get_all_conflicts(events: List[dict], min_break_hours: float = 8.0, 
+                     max_daily_hours: float = 12.0) -> List[dict]:
     """
-    Maak een gebruikersprofiel door het gemiddelde te nemen van feature_vectors
-    van alle eerder gekozen shifts.
+    Get all scheduling conflicts across all events
+    
+    Args:
+        events: List of all event dictionaries
+        min_break_hours: Minimum break time between shifts
+        max_daily_hours: Maximum working hours per day
+    
+    Returns:
+        List of conflict dictionaries
     """
-    if not past_shifts:
-        return None
-    vectors = [s.feature_vector for s in past_shifts if s.feature_vector is not None]
-    if not vectors:
-        return None
-    return np.mean(np.stack(vectors, axis=0), axis=0)
+    detector = ConflictDetector(min_break_hours, max_daily_hours)
+    conflicts = detector.detect_all_conflicts(events)
+    
+    return [c.to_dict() for c in conflicts]
 
 
-def compute_pattern_stats(past_shifts: List[Shift]) -> Tuple[Optional[str], Optional[str], Optional[str]]:
-    """
-    Bepaal meest gekozen event_type, role en time_slot.
-    """
-    if not past_shifts:
-        return None, None, None
-
-    event_type = Counter(s.event_type for s in past_shifts).most_common(1)[0][0]
-    role = Counter(s.role for s in past_shifts).most_common(1)[0][0]
-    slot = Counter(s.time_slot for s in past_shifts).most_common(1)[0][0]
-    return event_type, role, slot
-
-
-def is_favorite_shift(employee: Employee, shift: Shift) -> bool:
-    """
-    Check of deze shift expliciet als favoriet is aangeduid door de werknemer.
-    """
-    return shift.id in employee.favorite_shift_ids
-
-
-# -----------------------------
-# Scoring & recommendations
-# -----------------------------
-
-def score_shift(
-    employee: Employee,
-    shift: Shift,
-    user_vector: Optional[np.ndarray],
-    preferred_event: Optional[str],
-    preferred_role: Optional[str],
-    preferred_slot: Optional[str],
-    alpha: float = 0.6,
-    beta: float = 0.3,
-    gamma: float = 1.0,
-) -> float:
-    """
-    Bereken totale score voor een shift.
-    - alpha: gewicht voor content-based similarity
-    - beta: gewicht voor patroon-boost
-    - gamma: gewicht voor favorite-boost
-    """
-    # 1) content-based similarity
-    similarity = cosine_similarity(shift.feature_vector, user_vector) if user_vector is not None else 0.0
-
-    # 2) patroon-boost (meest voorkomende event_type/role/slot)
-    pattern_boost = 0.0
-    if preferred_event and shift.event_type == preferred_event:
-        pattern_boost += 0.3
-    if preferred_role and shift.role == preferred_role:
-        pattern_boost += 0.3
-    if preferred_slot and shift.time_slot == preferred_slot:
-        pattern_boost += 0.2
-
-    # 3) favoriet-boost
-    favorite_boost = gamma if is_favorite_shift(employee, shift) else 0.0
-
-    total_score = alpha * similarity + beta * pattern_boost + favorite_boost
-    return total_score
-
-
-def get_recommended_shifts(
-    employee: Employee,
-    all_shifts_for_event: List[Shift],
-    past_shifts_for_employee: List[Shift],
-) -> List[Shift]:
-    """
-    Geeft de lijst van shifts terug, gesorteerd van meest naar minst aanbevolen
-    voor deze werknemer.
-    """
-
-    # Zorg dat alle shifts een feature_vector hebben.
-    encoder = FeatureEncoder()
-    encoder.encode_shifts(all_shifts_for_event)
-    encoder.encode_shifts(past_shifts_for_employee)
-
-    # Gebruikersprofiel + patronen bepalen
-    user_vector = build_user_profile(past_shifts_for_employee)
-    preferred_event, preferred_role, preferred_slot = compute_pattern_stats(past_shifts_for_employee)
-
-    scored: List[Tuple[float, Shift]] = []
-    for shift in all_shifts_for_event:
-        score = score_shift(
-            employee=employee,
-            shift=shift,
-            user_vector=user_vector,
-            preferred_event=preferred_event,
-            preferred_role=preferred_role,
-            preferred_slot=preferred_slot,
-        )
-        scored.append((score, shift))
-
-    # Sorteer op score, van hoog naar laag
-    scored.sort(key=lambda x: x[0], reverse=True)
-
-    # Retourneer enkel de shifts
-    return [shift for _, shift in scored]
-
-
-# -----------------------------
-# Demo / test
-# -----------------------------
+# Example usage and testing
 
 if __name__ == "__main__":
-    # Voorbeeldwerknemer
-    emp = Employee(id=1, name="Lisa", favorite_shift_ids=[3])
-
-    # Historiek: eerder gekozen shifts
-    past_shifts = [
-        Shift(id=101, event_type="trouw", role="bar", time_slot="avond", weekday="vr-zo", location="zaal A", duration_hours=6),
-        Shift(id=102, event_type="trouw", role="zaal", time_slot="avond", weekday="vr-zo", location="zaal A", duration_hours=5),
-        Shift(id=103, event_type="receptie", role="bar", time_slot="namiddag", weekday="ma-do", location="zaal B", duration_hours=4),
+    # Test data
+    test_events = [
+        {
+            "id": "evt1",
+            "title": "Morning Shift",
+            "start": "2025-12-03 08:00:00",
+            "end": "2025-12-03 16:00:00",
+            "assigned": ["emp1", "emp2"]
+        },
+        {
+            "id": "evt2",
+            "title": "Evening Shift",
+            "start": "2025-12-03 18:00:00",
+            "end": "2025-12-03 23:00:00",
+            "assigned": ["emp1"]
+        },
+        {
+            "id": "evt3",
+            "title": "Overlapping Event",
+            "start": "2025-12-03 14:00:00",
+            "end": "2025-12-03 20:00:00",
+            "assigned": ["emp2"]
+        }
     ]
-
-    # Beschikbare shifts voor een nieuw trouwfeest
-    upcoming_shifts = [
-        Shift(id=1, event_type="trouw", event_type="trouw", role="bar", time_slot="avond", weekday="vr-zo", location="zaal A", duration_hours=6),
-        Shift(id=2, event_type="trouw", role="zaal", time_slot="namiddag", weekday="vr-zo", location="zaal B", duration_hours=5),
-        Shift(id=3, event_type="receptie", role="bar", time_slot="avond", weekday="ma-do", location="zaal C", duration_hours=4),
-        Shift(id=4, event_type="bedrijfsfeest", role="opbouw", time_slot="ochtend", weekday="ma-do", location="zaal A", duration_hours=3),
-    ]
-
-    recommendations = get_recommended_shifts(emp, upcoming_shifts, past_shifts)
-
-    print("Aanbevolen volgorde van shifts voor", emp.name, ":")
-    for s in recommendations:
-        print(
-            f"- Shift {s.id}: {s.event_type}, role={s.role}, slot={s.time_slot}, "
-            f"loc={s.location}, duur={s.duration_hours}u")
+    
+    print("=== Conflict Detection Test ===\n")
+    
+    # Detect all conflicts
+    all_conflicts = get_all_conflicts(test_events)
+    
+    print(f"Found {len(all_conflicts)} conflicts:\n")
+    for conflict in all_conflicts:
+        print(f"[{conflict['severity'].upper()}] {conflict['type']}")
+        print(f"  Employee: {conflict['employee_id']}")
+        print(f"  {conflict['message']}")
+        print(f"  Affected events: {conflict['event_ids']}\n")
+    
+    # Test new assignment validation
+    new_event = {
+        "id": "evt4",
+        "title": "Late Night Shift",
+        "start": "2025-12-03 23:30:00",
+        "end": "2025-12-04 02:00:00"
+    }
+    
+    is_valid, conflicts = validate_assignment("emp1", new_event, test_events)
+    
+    print(f"\n=== Testing New Assignment for emp1 ===")
+    print(f"Valid: {is_valid}")
+    if not is_valid:
+        print(f"Conflicts: {conflicts}")
