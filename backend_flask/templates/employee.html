@@ -100,11 +100,14 @@
         <!-- Sidebar with shifts and availabilities -->
         <div>
             <h2 style="margin-top: 0;">My Shifts</h2>
+            
+            <!-- Upcoming Shifts -->
+            <h3 style="font-size: 0.95rem; color: var(--text-light); margin: 0.75rem 0 0.5rem 0;">Upcoming</h3>
             <div id="myShiftsList" style="display: flex; flex-direction: column; gap: 1rem; margin-bottom: 1.5rem; max-height: 300px; overflow-y: auto; padding-right: 0.5rem;">
-                {% if not my_shifts %}
-                    <p style="color: var(--text-light); font-size: 0.9rem;">No shifts assigned yet.</p>
+                {% if not upcoming_shifts %}
+                    <p style="color: var(--text-light); font-size: 0.9rem;">No upcoming shifts.</p>
                 {% else %}
-                    {% for event in my_shifts %}
+                    {% for event in upcoming_shifts %}
                         <div class="event-widget card" style="padding: 1rem; font-size: 0.9rem;">
                             <div style="font-weight: bold; margin-bottom: 0.5rem; color: var(--primary);">{{ event.title }}</div>
                             <div style="font-size: 0.8rem; color: var(--text-light); margin-bottom: 0.25rem;">{{ event.start.split('T')[0]|format_date }}</div>
@@ -116,6 +119,23 @@
                     {% endfor %}
                 {% endif %}
             </div>
+
+            <!-- Past Shifts -->
+            {% if past_shifts %}
+                <h3 style="font-size: 0.95rem; color: var(--text-light); margin: 0.75rem 0 0.5rem 0;">Past</h3>
+                <div style="display: flex; flex-direction: column; gap: 1rem; margin-bottom: 1.5rem; max-height: 200px; overflow-y: auto; padding-right: 0.5rem;">
+                    {% for event in past_shifts %}
+                        <div class="event-widget card" style="padding: 1rem; font-size: 0.9rem; opacity: 0.6; background-color: #f5f5f5;">
+                            <div style="font-weight: bold; margin-bottom: 0.5rem; color: #999;">{{ event.title }}</div>
+                            <div style="font-size: 0.8rem; color: #999; margin-bottom: 0.25rem;">{{ event.start.split('T')[0]|format_date }}</div>
+                            <div style="font-size: 0.8rem; color: #999; margin-bottom: 0.25rem;">{{ event.start.split('T')[1][:5] }} - {{ event.end.split('T')[1][:5] }}</div>
+                            <div style="font-size: 0.8rem; margin-top: 0.5rem;">
+                                <strong>Location:</strong> {{ event.location or 'TBD' }}
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
 
             <h3>Available Shifts</h3>
             <div id="availableShiftsList" style="display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1.5rem; max-height: 400px; overflow-y: auto; padding-right: 0.5rem;">
@@ -146,9 +166,12 @@
             </div>
 
             <h3>Your Availability</h3>
-            {% if my_availabilities %}
-                <div style="display: flex; flex-direction: column; gap: 0.75rem; max-height: 300px; overflow-y: auto; padding-right: 0.5rem;">
-                    {% for avail in my_availabilities %}
+            
+            <!-- Upcoming Availability -->
+            <h4 style="font-size: 0.9rem; color: var(--text-light); margin: 0.5rem 0;">Upcoming</h4>
+            {% if upcoming_availability %}
+                <div style="display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1rem; max-height: 250px; overflow-y: auto; padding-right: 0.5rem;">
+                    {% for avail in upcoming_availability %}
                         {% set start_date = avail.start.split('T')[0]|format_date %}
                         {% set start_time = avail.start.split('T')[1][:5] %}
                         {% set end_date = avail.end.split('T')[0]|format_date %}
@@ -166,7 +189,30 @@
                     {% endfor %}
                 </div>
             {% else %}
-                <p style="color: var(--text-light); font-size: 0.85rem;">No availability submitted yet.</p>
+                <p style="color: var(--text-light); font-size: 0.85rem;">No upcoming availability.</p>
+            {% endif %}
+
+            <!-- Past Availability -->
+            {% if past_availability %}
+                <h4 style="font-size: 0.9rem; color: var(--text-light); margin: 0.5rem 0;">Past</h4>
+                <div style="display: flex; flex-direction: column; gap: 0.75rem; max-height: 200px; overflow-y: auto; padding-right: 0.5rem;">
+                    {% for avail in past_availability %}
+                        {% set start_date = avail.start.split('T')[0]|format_date %}
+                        {% set start_time = avail.start.split('T')[1][:5] %}
+                        {% set end_date = avail.end.split('T')[0]|format_date %}
+                        {% set end_time = avail.end.split('T')[1][:5] %}
+                        <div class="event-widget card" style="padding: 0.75rem; font-size: 0.85rem; background: #f5f5f5; border-left: 4px solid #999; opacity: 0.6;">
+                            <div style="font-weight: bold; margin-bottom: 0.25rem; color: #999;">Available</div>
+                            <div style="font-size: 0.75rem; color: #999; margin-bottom: 0.25rem;">{{ start_date }} • {{ start_time }} - {{ end_time }}</div>
+                            {% if start_date != end_date %}
+                                <div style="font-size: 0.75rem; color: #999; margin-bottom: 0.25rem;">to {{ end_date }}</div>
+                            {% endif %}
+                            {% if avail.note %}
+                                <div style="font-size: 0.75rem; color: #999; margin-top: 0.25rem;"><em>{{ avail.note }}</em></div>
+                            {% endif %}
+                        </div>
+                    {% endfor %}
+                </div>
             {% endif %}
         </div>
     </div>

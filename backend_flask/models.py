@@ -350,15 +350,18 @@ def search_and_filter_events(events, search_query="", filter_understaffed=False,
     
     return filtered
 
-def calculate_statistics(events, employees):
+def calculate_statistics(events, employees, availabilities=None):
     """
     Calculate comprehensive statistics for dashboard.
     
     Returns dictionary with:
     - Weekly/monthly overview stats
-    - Individual employee statistics
+    - Individual employee statistics with utilization rate based on availability hours
     """
     from datetime import datetime, timedelta
+    
+    if availabilities is None:
+        availabilities = []
     
     stats = {
         "total_events": len(events),
@@ -411,10 +414,25 @@ def calculate_statistics(events, employees):
             except:
                 pass
         
-        # Calculate utilization rate (assigned shifts / total events)
+        # Calculate total available hours for this employee
+        total_available_hours = 0
+        emp_availabilities = [a for a in availabilities if a.get('user_id') == emp_id]
+        
+        for avail in emp_availabilities:
+            try:
+                start = datetime.fromisoformat(avail.get('start', '').replace('Z', '+00:00'))
+                end = datetime.fromisoformat(avail.get('end', '').replace('Z', '+00:00'))
+                hours = (end - start).total_seconds() / 3600
+                # Only add positive hours (ignore negative or invalid time ranges)
+                if hours > 0:
+                    total_available_hours += hours
+            except:
+                pass
+        
+        # Calculate utilization rate (hours worked / hours available)
         utilization_rate = 0
-        if len(events) > 0:
-            utilization_rate = round((len(assigned_shifts) / len(events)) * 100, 1)
+        if total_available_hours > 0:
+            utilization_rate = round((total_hours / total_available_hours) * 100, 1)
         
         if len(assigned_shifts) > 0 or total_hours > 0:
             stats["employee_stats"].append({
@@ -428,5 +446,3 @@ def calculate_statistics(events, employees):
     stats["employee_stats"].sort(key=lambda x: x['total_hours'], reverse=True)
     
     return stats
-
-    return filtered

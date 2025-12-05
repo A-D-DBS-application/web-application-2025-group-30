@@ -72,8 +72,37 @@ def dashboard():
     
     # Get user's availability windows
     my_availabilities = get_availability_for_user(str(user["id"]))
+    
+    # Separate past and upcoming shifts
+    now = datetime.now()
+    upcoming_shifts = []
+    past_shifts = []
+    
+    for shift in my_shifts:
+        try:
+            shift_start = datetime.fromisoformat(shift.get('start', '').replace('Z', '+00:00'))
+            if shift_start > now:
+                upcoming_shifts.append(shift)
+            else:
+                past_shifts.append(shift)
+        except:
+            upcoming_shifts.append(shift)  # Default to upcoming if can't parse
+    
+    # Separate past and upcoming availability
+    upcoming_availability = []
+    past_availability = []
+    
+    for avail in my_availabilities:
+        try:
+            avail_start = datetime.fromisoformat(avail.get('start', '').replace('Z', '+00:00'))
+            if avail_start > now:
+                upcoming_availability.append(avail)
+            else:
+                past_availability.append(avail)
+        except:
+            upcoming_availability.append(avail)  # Default to upcoming if can't parse
 
-    return render_template("employee.html", user=user, my_shifts=my_shifts, available_shifts=available_shifts, month=month, year=year, my_availabilities=my_availabilities)
+    return render_template("employee.html", user=user, my_shifts=my_shifts, upcoming_shifts=upcoming_shifts, past_shifts=past_shifts, available_shifts=available_shifts, month=month, year=year, my_availabilities=my_availabilities, upcoming_availability=upcoming_availability, past_availability=past_availability)
 
 
 @app.route("/manager")
@@ -109,10 +138,27 @@ def manager():
         filter_date_end=filter_date_end
     )
     
+    # Separate past and upcoming events
+    now = datetime.now()
+    upcoming_events = []
+    past_events = []
+    
+    for event in filtered_events:
+        try:
+            event_start = datetime.fromisoformat(event.get('start', '').replace('Z', '+00:00'))
+            if event_start > now:
+                upcoming_events.append(event)
+            else:
+                past_events.append(event)
+        except:
+            upcoming_events.append(event)  # Default to upcoming if can't parse
+    
     return render_template(
         "manager.html", 
         user=user, 
         events=filtered_events,
+        upcoming_events=upcoming_events,
+        past_events=past_events,
         all_events=all_events,
         employees=employees, 
         month=month, 
@@ -144,11 +190,17 @@ def statistics():
     all_users = list_users()
     employees = [u for u in all_users if u.get("role") == "employee"]
     
+    # Get all availabilities
+    from models import list_availabilities
+    all_availabilities = list_availabilities()
+    
     # Get time period filter
     period = request.args.get('period', 'all')  # all, week, month
     
     # Filter events by time period based on scheduled start date
     filtered_events = all_events
+    filtered_availabilities = all_availabilities
+    
     if period != 'all':
         today = datetime.now()
         if period == 'week':
@@ -157,6 +209,10 @@ def statistics():
             filtered_events = [
                 e for e in all_events
                 if week_start <= datetime.fromisoformat(e.get('start', '').replace('Z', '+00:00')) < week_end
+            ]
+            filtered_availabilities = [
+                a for a in all_availabilities
+                if week_start <= datetime.fromisoformat(a.get('start', '').replace('Z', '+00:00')) < week_end
             ]
         elif period == 'month':
             month_start = today.replace(day=1)
@@ -168,9 +224,13 @@ def statistics():
                 e for e in all_events
                 if month_start <= datetime.fromisoformat(e.get('start', '').replace('Z', '+00:00')) < month_end
             ]
+            filtered_availabilities = [
+                a for a in all_availabilities
+                if month_start <= datetime.fromisoformat(a.get('start', '').replace('Z', '+00:00')) < month_end
+            ]
     
     # Calculate statistics
-    stats = calculate_statistics(filtered_events, employees)
+    stats = calculate_statistics(filtered_events, employees, filtered_availabilities)
     
     return render_template("statistics.html", user=user, stats=stats, period=period)
 

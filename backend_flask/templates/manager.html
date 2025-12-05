@@ -170,93 +170,188 @@
                 {% endif %}
             </div>
             
-            <!-- Scrollable Events List -->
-            <div id="eventsList" style="display: flex; flex-direction: column; gap: 1rem; max-height: 800px; overflow-y: auto; padding-right: 0.5rem;">
+            <!-- Events List with Separate Scrollbars -->
             {% if not events %}
                 <p style="color: var(--text-light); font-size: 0.9rem;">No events found.</p>
             {% else %}
-                {% for event in events %}
-                    {% set assigned_count = event.assigned|length %}
-                    {% set capacity = event.capacity|int %}
-                    {% set progress = (assigned_count / capacity * 100)|round|int %}
-                    {% if progress > 100 %}{% set progress = 100 %}{% endif %}
-                    
-                    <div class="event-widget card" style="padding: 1rem; font-size: 0.9rem;">
-                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
-                            <div style="font-weight: bold; color: var(--primary); flex: 1;">{{ event.title }}</div>
-                            <div style="display: flex; gap: 0.25rem;">
-                                <form action="/events/{{ event.id }}/edit" method="GET" style="display: inline;">
-                                    <button type="submit" class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.7rem;" title="Edit Event">✎</button>
-                                </form>
-                                <form action="/events/{{ event.id }}/delete" method="POST" style="display: inline;" onsubmit="return confirm('Delete this event?');">
-                                    <button type="submit" class="btn" style="padding: 0.25rem 0.5rem; font-size: 0.7rem; background: #f44336; color: white; border: none;" title="Delete Event">×</button>
-                                </form>
-                            </div>
-                        </div>
-                        <div style="font-size: 0.8rem; color: var(--text-light); margin-bottom: 0.5rem;">{{ event.start.split('T')[0]|format_date }} • {{ event.start.split('T')[1][:5] }}</div>
-                        
-                        <div class="progress-container" style="margin: 0.5rem 0;">
-                            <div class="progress-bar" style="width: {{ progress }}%"></div>
-                        </div>
-                        <div style="font-size: 0.8rem; color: var(--text-light); margin-bottom: 0.75rem;">
-                            {{ assigned_count }} / {{ capacity }} Staff
-                        </div>
-
-                        <details style="margin-top: 0.5rem;">
-                            <summary style="cursor: pointer; font-size: 0.85rem; color: var(--primary);">Manage ▼</summary>
-                            <div style="padding-top: 0.5rem; border-top: 1px solid var(--border); margin-top: 0.5rem;">
+                <!-- Upcoming Events -->
+                {% if upcoming_events %}
+                    <div style="margin-bottom: 1.5rem;">
+                        <div style="font-size: 0.9rem; font-weight: bold; color: var(--primary); padding: 0.5rem 0; border-bottom: 2px solid var(--primary); margin-bottom: 0.75rem;">Upcoming</div>
+                        <div style="display: flex; flex-direction: column; gap: 1rem; max-height: 400px; overflow-y: auto; padding-right: 0.5rem;">
+                            {% for event in upcoming_events %}
+                                {% set assigned_count = event.assigned|length %}
+                                {% set capacity = event.capacity|int %}
+                                {% set progress = (assigned_count / capacity * 100)|round|int %}
+                                {% if progress > 100 %}{% set progress = 100 %}{% endif %}
                                 
-                                {% if event.assigned %}
-                                    <div style="margin-bottom: 0.75rem;">
-                                        <strong style="font-size: 0.8rem;">Assigned Staff:</strong>
-                                        {% for uid in event.assigned %}
-                                            {% set emp = employees|selectattr('id', 'equalto', uid)|first %}
-                                            <div style="display: flex; gap: 0.5rem; margin-top: 0.25rem; align-items: center; padding: 0.35rem; background: #f0f8ff; border-radius: 3px;">
-                                                <span style="font-size: 0.75rem; flex: 1;">{{ emp.username if emp else uid[:8] }}</span>
-                                                <form action="/events/{{ event.id }}/unassign" method="POST" style="display:inline;" onsubmit="return confirm('Remove this employee?');">
-                                                    <input type="hidden" name="user_id" value="{{ uid }}">
-                                                    <button type="submit" class="btn" style="padding: 0.25rem 0.5rem; font-size: 0.7rem; background: #ff6b6b; color: white; border: none;">✕</button>
-                                                </form>
-                                            </div>
-                                        {% endfor %}
+                                <div class="event-widget card" style="padding: 1rem; font-size: 0.9rem;">
+                                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
+                                        <div style="font-weight: bold; color: var(--primary); flex: 1;">{{ event.title }}</div>
+                                        <div style="display: flex; gap: 0.25rem;">
+                                            <form action="/events/{{ event.id }}/edit" method="GET" style="display: inline;">
+                                                <button type="submit" class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.7rem;" title="Edit Event">✎</button>
+                                            </form>
+                                            <form action="/events/{{ event.id }}/delete" method="POST" style="display: inline;" onsubmit="return confirm('Delete this event?');">
+                                                <button type="submit" class="btn" style="padding: 0.25rem 0.5rem; font-size: 0.7rem; background: #f44336; color: white; border: none;" title="Delete Event">×</button>
+                                            </form>
+                                        </div>
                                     </div>
-                                {% endif %}
-                                
-                                {% if event.pending %}
-                                    <div style="margin-bottom: 0.75rem;">
-                                        <strong style="font-size: 0.8rem;">Pending:</strong>
-                                        {% for uid in event.pending %}
-                                            {% set emp = employees|selectattr('id', 'equalto', uid)|first %}
-                                            <div style="display: flex; gap: 0.5rem; margin-top: 0.25rem; align-items: center; padding: 0.35rem; background: #fffde7; border-radius: 3px;">
-                                                <span style="font-size: 0.75rem; flex: 1;">{{ emp.username if emp else uid[:8] }}...</span>
-                                                <form action="/events/{{ event.id }}/confirm" method="POST" style="display:inline;">
-                                                    <input type="hidden" name="user_id" value="{{ uid }}">
-                                                    <button type="submit" class="btn btn-success" style="padding: 0.25rem 0.5rem; font-size: 0.7rem;">✓</button>
-                                                </form>
-                                            </div>
-                                        {% endfor %}
+                                    <div style="font-size: 0.8rem; color: var(--text-light); margin-bottom: 0.5rem;">{{ event.start.split('T')[0]|format_date }} • {{ event.start.split('T')[1][:5] }}</div>
+                                    
+                                    <div class="progress-container" style="margin: 0.5rem 0;">
+                                        <div class="progress-bar" style="width: {{ progress }}%"></div>
                                     </div>
-                                {% endif %}
+                                    <div style="font-size: 0.8rem; color: var(--text-light); margin-bottom: 0.75rem;">
+                                        {{ assigned_count }} / {{ capacity }} Staff
+                                    </div>
 
-                                {% if assigned_count < capacity %}
-                                    <form action="/events/{{ event.id }}/assign" method="POST" style="display: flex; flex-direction: column; gap: 0.5rem;">
-                                        <select name="user_id" required style="padding: 0.4rem; border: 1px solid var(--border); border-radius: 4px; font-size: 0.8rem;">
-                                            <option value="">Assign employee...</option>
-                                            {% for emp in employees %}
-                                                {% if emp.id not in event.assigned and emp.id not in event.pending %}
-                                                    <option value="{{ emp.id }}">{{ emp.username }}</option>
-                                                {% endif %}
-                                            {% endfor %}
-                                        </select>
-                                        <button type="submit" class="btn btn-primary" style="padding: 0.4rem; font-size: 0.8rem;">Assign</button>
-                                    </form>
-                                {% endif %}
-                            </div>
-                        </details>
+                                    <details style="margin-top: 0.5rem;">
+                                        <summary style="cursor: pointer; font-size: 0.85rem; color: var(--primary);">Manage ▼</summary>
+                                        <div style="padding-top: 0.5rem; border-top: 1px solid var(--border); margin-top: 0.5rem;">
+                                            
+                                            {% if event.assigned %}
+                                                <div style="margin-bottom: 0.75rem;">
+                                                    <strong style="font-size: 0.8rem;">Assigned Staff:</strong>
+                                                    {% for uid in event.assigned %}
+                                                        {% set emp = employees|selectattr('id', 'equalto', uid)|first %}
+                                                        <div style="display: flex; gap: 0.5rem; margin-top: 0.25rem; align-items: center; padding: 0.35rem; background: #f0f8ff; border-radius: 3px;">
+                                                            <span style="font-size: 0.75rem; flex: 1;">{{ emp.username if emp else uid[:8] }}</span>
+                                                            <form action="/events/{{ event.id }}/unassign" method="POST" style="display:inline;" onsubmit="return confirm('Remove this employee?');">
+                                                                <input type="hidden" name="user_id" value="{{ uid }}">
+                                                                <button type="submit" class="btn" style="padding: 0.25rem 0.5rem; font-size: 0.7rem; background: #ff6b6b; color: white; border: none;">✕</button>
+                                                            </form>
+                                                        </div>
+                                                    {% endfor %}
+                                                </div>
+                                            {% endif %}
+                                            
+                                            {% if event.pending %}
+                                                <div style="margin-bottom: 0.75rem;">
+                                                    <strong style="font-size: 0.8rem;">Pending:</strong>
+                                                    {% for uid in event.pending %}
+                                                        {% set emp = employees|selectattr('id', 'equalto', uid)|first %}
+                                                        <div style="display: flex; gap: 0.5rem; margin-top: 0.25rem; align-items: center; padding: 0.35rem; background: #fffde7; border-radius: 3px;">
+                                                            <span style="font-size: 0.75rem; flex: 1;">{{ emp.username if emp else uid[:8] }}...</span>
+                                                            <form action="/events/{{ event.id }}/confirm" method="POST" style="display:inline;">
+                                                                <input type="hidden" name="user_id" value="{{ uid }}">
+                                                                <button type="submit" class="btn btn-success" style="padding: 0.25rem 0.5rem; font-size: 0.7rem;">✓</button>
+                                                            </form>
+                                                        </div>
+                                                    {% endfor %}
+                                                </div>
+                                            {% endif %}
+
+                                            {% if assigned_count < capacity %}
+                                                <form action="/events/{{ event.id }}/assign" method="POST" style="display: flex; flex-direction: column; gap: 0.5rem;">
+                                                    <select name="user_id" required style="padding: 0.4rem; border: 1px solid var(--border); border-radius: 4px; font-size: 0.8rem;">
+                                                        <option value="">Assign employee...</option>
+                                                        {% for emp in employees %}
+                                                            {% if emp.id not in event.assigned and emp.id not in event.pending %}
+                                                                <option value="{{ emp.id }}">{{ emp.username }}</option>
+                                                            {% endif %}
+                                                        {% endfor %}
+                                                    </select>
+                                                    <button type="submit" class="btn btn-primary" style="padding: 0.4rem; font-size: 0.8rem;">Assign</button>
+                                                </form>
+                                            {% endif %}
+                                        </div>
+                                    </details>
+                                </div>
+                            {% endfor %}
+                        </div>
                     </div>
-                {% endfor %}
+                {% endif %}
+
+                <!-- Past Events -->
+                {% if past_events %}
+                    <div style="margin-bottom: 1.5rem;">
+                        <div style="font-size: 0.9rem; font-weight: bold; color: #999; padding: 0.5rem 0; border-bottom: 2px solid #ddd; margin-bottom: 0.75rem;">Past</div>
+                        <div style="display: flex; flex-direction: column; gap: 1rem; max-height: 300px; overflow-y: auto; padding-right: 0.5rem;">
+                            {% for event in past_events %}
+                                {% set assigned_count = event.assigned|length %}
+                                {% set capacity = event.capacity|int %}
+                                {% set progress = (assigned_count / capacity * 100)|round|int %}
+                                {% if progress > 100 %}{% set progress = 100 %}{% endif %}
+                                
+                                <div class="event-widget card" style="padding: 1rem; font-size: 0.9rem; opacity: 0.6; background-color: #f5f5f5;">
+                                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
+                                        <div style="font-weight: bold; color: #999; flex: 1;">{{ event.title }}</div>
+                                        <div style="display: flex; gap: 0.25rem;">
+                                            <form action="/events/{{ event.id }}/edit" method="GET" style="display: inline;">
+                                                <button type="submit" class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.7rem;" title="Edit Event">✎</button>
+                                            </form>
+                                            <form action="/events/{{ event.id }}/delete" method="POST" style="display: inline;" onsubmit="return confirm('Delete this event?');">
+                                                <button type="submit" class="btn" style="padding: 0.25rem 0.5rem; font-size: 0.7rem; background: #f44336; color: white; border: none;" title="Delete Event">×</button>
+                                            </form>
+                                        </div>
+                                    </div>
+                                    <div style="font-size: 0.8rem; color: #999; margin-bottom: 0.5rem;">{{ event.start.split('T')[0]|format_date }} • {{ event.start.split('T')[1][:5] }}</div>
+                                    
+                                    <div class="progress-container" style="margin: 0.5rem 0;">
+                                        <div class="progress-bar" style="width: {{ progress }}%; background-color: #ddd;"></div>
+                                    </div>
+                                    <div style="font-size: 0.8rem; color: #999; margin-bottom: 0.75rem;">
+                                        {{ assigned_count }} / {{ capacity }} Staff
+                                    </div>
+
+                                    <details style="margin-top: 0.5rem;">
+                                        <summary style="cursor: pointer; font-size: 0.85rem; color: #999;">Manage ▼</summary>
+                                        <div style="padding-top: 0.5rem; border-top: 1px solid var(--border); margin-top: 0.5rem;">
+                                            
+                                            {% if event.assigned %}
+                                                <div style="margin-bottom: 0.75rem;">
+                                                    <strong style="font-size: 0.8rem;">Assigned Staff:</strong>
+                                                    {% for uid in event.assigned %}
+                                                        {% set emp = employees|selectattr('id', 'equalto', uid)|first %}
+                                                        <div style="display: flex; gap: 0.5rem; margin-top: 0.25rem; align-items: center; padding: 0.35rem; background: #f0f8ff; border-radius: 3px;">
+                                                            <span style="font-size: 0.75rem; flex: 1;">{{ emp.username if emp else uid[:8] }}</span>
+                                                            <form action="/events/{{ event.id }}/unassign" method="POST" style="display:inline;" onsubmit="return confirm('Remove this employee?');">
+                                                                <input type="hidden" name="user_id" value="{{ uid }}">
+                                                                <button type="submit" class="btn" style="padding: 0.25rem 0.5rem; font-size: 0.7rem; background: #ff6b6b; color: white; border: none;">✕</button>
+                                                            </form>
+                                                        </div>
+                                                    {% endfor %}
+                                                </div>
+                                            {% endif %}
+                                            
+                                            {% if event.pending %}
+                                                <div style="margin-bottom: 0.75rem;">
+                                                    <strong style="font-size: 0.8rem;">Pending:</strong>
+                                                    {% for uid in event.pending %}
+                                                        {% set emp = employees|selectattr('id', 'equalto', uid)|first %}
+                                                        <div style="display: flex; gap: 0.5rem; margin-top: 0.25rem; align-items: center; padding: 0.35rem; background: #fffde7; border-radius: 3px;">
+                                                            <span style="font-size: 0.75rem; flex: 1;">{{ emp.username if emp else uid[:8] }}...</span>
+                                                            <form action="/events/{{ event.id }}/confirm" method="POST" style="display:inline;">
+                                                                <input type="hidden" name="user_id" value="{{ uid }}">
+                                                                <button type="submit" class="btn btn-success" style="padding: 0.25rem 0.5rem; font-size: 0.7rem;">✓</button>
+                                                            </form>
+                                                        </div>
+                                                    {% endfor %}
+                                                </div>
+                                            {% endif %}
+
+                                            {% if assigned_count < capacity %}
+                                                <form action="/events/{{ event.id }}/assign" method="POST" style="display: flex; flex-direction: column; gap: 0.5rem;">
+                                                    <select name="user_id" required style="padding: 0.4rem; border: 1px solid var(--border); border-radius: 4px; font-size: 0.8rem;">
+                                                        <option value="">Assign employee...</option>
+                                                        {% for emp in employees %}
+                                                            {% if emp.id not in event.assigned and emp.id not in event.pending %}
+                                                                <option value="{{ emp.id }}">{{ emp.username }}</option>
+                                                            {% endif %}
+                                                        {% endfor %}
+                                                    </select>
+                                                    <button type="submit" class="btn btn-primary" style="padding: 0.4rem; font-size: 0.8rem;">Assign</button>
+                                                </form>
+                                            {% endif %}
+                                        </div>
+                                    </details>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                {% endif %}
             {% endif %}
-            </div>
         </div>
     </div>
 </div>
