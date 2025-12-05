@@ -33,7 +33,7 @@ create table public.events (
 -- Availabilities table
 create table public.availabilities (
   id uuid default gen_random_uuid() primary key,
-  user_id text,
+  user_id uuid not null references public.users(id) on delete cascade,
   "start" text,
   "end" text,
   note text,

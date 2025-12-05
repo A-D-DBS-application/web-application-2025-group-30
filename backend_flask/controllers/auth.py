@@ -26,6 +26,7 @@ def register():
     
     # Auto login
     session["user_id"] = user["id"]
+    session["user_role"] = role
     
     if role == "manager":
         return redirect(url_for("manager"))
@@ -44,6 +45,7 @@ def login():
         return render_template("login.html", error="Invalid credentials")
         
     session["user_id"] = user["id"]
+    session["user_role"] = user.get("role", "employee")
     
     if user.get("role") == "manager":
         return redirect(url_for("manager"))

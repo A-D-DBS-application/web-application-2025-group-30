@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify, session, redirect, url_for, rende
 import os
 import sys
 import jwt
-from models import create_event, list_events, assign_user_to_event, subscribe_user_to_event, confirm_user_assignment, get_event_by_id, delete_event, update_event
+from models import create_event, list_events, assign_user_to_event, subscribe_user_to_event, confirm_user_assignment, get_event_by_id, delete_event, update_event, is_employee_available
 
 # Import conflict detection algorithm
 algoritme_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'Flask', 'app'))
@@ -57,35 +57,18 @@ def assign_event(event_id):
     if not user_id:
         return redirect(url_for("manager"))
     
-    # Check for conflicts before assigning
+    # Check for conflicts and availability before assigning
     current_event = get_event_by_id(event_id)
     all_events = list_events()
     
     if current_event:
-        # Detailed logging
-        print(f"\n{'='*60}")
-        print(f"CONFLICT CHECK: Assigning user {user_id[:8]}... to event '{current_event.get('title')}'")
-        print(f"Event details:")
-        print(f"  ID: {current_event.get('id')}")
-        print(f"  Start: {current_event.get('start')}")
-        print(f"  End: {current_event.get('end')}")
-        print(f"  Location: {current_event.get('location')}")
-        print(f"  Currently assigned: {current_event.get('assigned', [])}")
+        # Check availability first
+        if not is_employee_available(user_id, current_event.get('start'), current_event.get('end')):
+            flash("Cannot assign employee: they are not available during this event time", "error")
+            return redirect(url_for("manager"))
         
-        # Show all events this employee is currently in
-        employee_events = [e for e in all_events if user_id in e.get('assigned', [])]
-        print(f"\nEmployee currently assigned to {len(employee_events)} events:")
-        for e in employee_events:
-            print(f"  - '{e.get('title')}' at {e.get('location')} ({e.get('start')} to {e.get('end')})")
-        
-        print(f"\nCalling validate_assignment...")
+        # Then check for scheduling conflicts
         is_valid, conflicts = validate_assignment(user_id, current_event, all_events)
-        
-        print(f"Result: valid={is_valid}, conflicts={len(conflicts)}")
-        if conflicts:
-            for c in conflicts:
-                print(f"  Conflict: {c}")
-        print(f"{'='*60}\n")
         
         if not is_valid:
             # Format conflict messages for display
@@ -105,6 +88,30 @@ def assign_event(event_id):
     return redirect(url_for("manager"))
 
 
+@events_bp.route("/<event_id>/unassign", methods=["POST"])
+def unassign_event(event_id):
+    if "user_id" not in session:
+        return redirect(url_for("index"))
+    
+    user_id = request.form.get("user_id")
+    if not user_id:
+        return redirect(url_for("manager"))
+    
+    # Get the event and remove the employee from assigned list
+    event = get_event_by_id(event_id)
+    if event:
+        assigned = event.get('assigned', [])
+        if user_id in assigned:
+            assigned.remove(user_id)
+            # Update the event with the new assigned list
+            update_event(event_id, {'assigned': assigned})
+            flash("Employee removed from event successfully!", "success")
+        else:
+            flash("Employee not found in this event", "error")
+    
+    return redirect(url_for("manager"))
+
+
 @events_bp.route("/<event_id>/confirm", methods=["POST"])
 def confirm_event_subscription(event_id):
     if "user_id" not in session:
@@ -112,11 +119,16 @@ def confirm_event_subscription(event_id):
 
     user_id = request.form.get("user_id")
     if user_id:
-        # Check for conflicts before confirming pending assignment
+        # Check availability and conflicts before confirming pending assignment
         current_event = get_event_by_id(event_id)
         all_events = list_events()
         
         if current_event:
+            # Check availability first
+            if not is_employee_available(user_id, current_event.get('start'), current_event.get('end')):
+                flash("Cannot confirm assignment: employee is not available during this event time", "error")
+                return redirect(url_for("manager"))
+            
             is_valid, conflicts = validate_assignment(user_id, current_event, all_events)
             
             if not is_valid:

@@ -11,6 +11,13 @@
     <h1>Personnel Scheduler</h1>
     <nav>
       {% if session.get('user_id') %}
+        {% if session.get('user_role') == 'manager' %}
+          {% if request.path == '/statistics' %}
+            <a href="/manager">Planner</a>
+          {% else %}
+            <a href="/statistics">Statistics</a>
+          {% endif %}
+        {% endif %}
         <a href="/logout">Logout</a>
       {% else %}
         <a href="/">Login</a>
