@@ -30,15 +30,29 @@ if not hasattr(_pkgutil, "get_loader"):
 
     _pkgutil.get_loader = _get_loader
 
-from flask import Flask, jsonify, render_template, session, redirect, url_for
+from flask import Flask, jsonify, render_template, session, redirect, url_for, request
 from controllers.auth import auth_bp
 from controllers.users import users_bp
 from controllers.events import events_bp
 from controllers.availability import availability_bp
-from models import get_user_by_id, list_events, list_users
+from models import get_user_by_id, list_events, list_users, get_availability_for_user, search_and_filter_events, calculate_statistics
+from datetime import datetime, timedelta
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret")
+
+# Register Jinja filter for date formatting
+def format_date(date_string):
+    """Convert ISO date (2025-11-28) or ISO datetime to 'DD Mon YYYY' format"""
+    try:
+        # Handle both datetime and date strings
+        date_part = date_string.split('T')[0] if 'T' in date_string else date_string
+        dt = datetime.strptime(date_part, '%Y-%m-%d')
+        return dt.strftime('%d %b %Y')
+    except:
+        return date_string
+
+app.jinja_env.filters['format_date'] = format_date
 
 # Register blueprints
 app.register_blueprint(auth_bp, url_prefix="/auth")
@@ -73,6 +87,11 @@ def dashboard():
         session.clear()
         return redirect(url_for("index"))
 
+    # Get month/year parameters or use current date
+    from datetime import datetime
+    month = request.args.get('month', type=int) or datetime.now().month
+    year = request.args.get('year', type=int) or datetime.now().year
+
     # Prepare data for the template
     all_events = list_events()
     my_shifts = [e for e in all_events if user["id"] in (e.get("assigned") or [])]
@@ -81,8 +100,11 @@ def dashboard():
     for e in all_events:
         if user["id"] not in (e.get("assigned") or []):
             available_shifts.append(e)
+    
+    # Get user's availability windows
+    my_availabilities = get_availability_for_user(str(user["id"]))
 
-    return render_template("dashboard.html", user=user, my_shifts=my_shifts, available_shifts=available_shifts)
+    return render_template("employee.html", user=user, my_shifts=my_shifts, available_shifts=available_shifts, month=month, year=year, my_availabilities=my_availabilities)
 
 
 @app.route("/manager")
@@ -94,17 +116,94 @@ def manager():
     if not user or user.get("role") != "manager":
         return redirect(url_for("dashboard"))
 
+    # Get month/year parameters or use current date
+    month = request.args.get('month', type=int) or datetime.now().month
+    year = request.args.get('year', type=int) or datetime.now().year
+
     all_events = list_events()
     all_users = list_users()
     # Filter to only employees
     employees = [u for u in all_users if u.get("role") == "employee"]
-    return render_template("manager.html", user=user, events=all_events, employees=employees)
+    
+    # Get search and filter parameters from query string
+    search_query = request.args.get('search', '')
+    filter_understaffed = request.args.get('understaffed', '').lower() == 'true'
+    filter_date_start = request.args.get('date_start', '')
+    filter_date_end = request.args.get('date_end', '')
+    
+    # Apply search and filter
+    filtered_events = search_and_filter_events(
+        all_events,
+        search_query=search_query,
+        filter_understaffed=filter_understaffed,
+        filter_date_start=filter_date_start,
+        filter_date_end=filter_date_end
+    )
+    
+    return render_template(
+        "manager.html", 
+        user=user, 
+        events=filtered_events,
+        all_events=all_events,
+        employees=employees, 
+        month=month, 
+        year=year,
+        search_query=search_query,
+        filter_understaffed=filter_understaffed,
+        filter_date_start=filter_date_start,
+        filter_date_end=filter_date_end
+    )
 
 
 @app.route("/logout")
 def logout():
     session.clear()
     return redirect(url_for("index"))
+
+
+@app.route("/statistics")
+def statistics():
+    if "user_id" not in session:
+        return redirect(url_for("index"))
+    
+    user = get_user_by_id(session["user_id"])
+    if not user or user.get("role") != "manager":
+        return redirect(url_for("dashboard"))
+    
+    # Get all events and employees
+    all_events = list_events()
+    all_users = list_users()
+    employees = [u for u in all_users if u.get("role") == "employee"]
+    
+    # Get time period filter
+    period = request.args.get('period', 'all')  # all, week, month
+    
+    # Filter events by time period based on scheduled start date
+    filtered_events = all_events
+    if period != 'all':
+        today = datetime.now()
+        if period == 'week':
+            week_start = today - timedelta(days=today.weekday())  # Start of current week
+            week_end = week_start + timedelta(days=7)
+            filtered_events = [
+                e for e in all_events
+                if week_start <= datetime.fromisoformat(e.get('start', '').replace('Z', '+00:00')) < week_end
+            ]
+        elif period == 'month':
+            month_start = today.replace(day=1)
+            if today.month == 12:
+                month_end = month_start.replace(year=today.year + 1, month=1)
+            else:
+                month_end = month_start.replace(month=today.month + 1)
+            filtered_events = [
+                e for e in all_events
+                if month_start <= datetime.fromisoformat(e.get('start', '').replace('Z', '+00:00')) < month_end
+            ]
+    
+    # Calculate statistics
+    stats = calculate_statistics(filtered_events, employees)
+    
+    return render_template("statistics.html", user=user, stats=stats, period=period)
 
 
 if __name__ == "__main__":

@@ -11,9 +11,12 @@
     <h1>Personnel Scheduler</h1>
     <nav>
       {% if session.get('user_id') %}
-        <a href="/dashboard">Dashboard</a>
-        {% if user and user.role == 'manager' %}
-          <a href="/manager">Manager</a>
+        {% if session.get('user_role') == 'manager' %}
+          {% if request.path == '/statistics' %}
+            <a href="/manager">Planner</a>
+          {% else %}
+            <a href="/statistics">Statistics</a>
+          {% endif %}
         {% endif %}
         <a href="/logout">Logout</a>
       {% else %}
@@ -22,6 +25,18 @@
     </nav>
   </header>
   <main>
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div style="max-width: 1200px; margin: 1rem auto; padding: 0 1rem;">
+          {% for category, message in messages %}
+            <div class="flash-message flash-{{ category }}" style="padding: 1rem; margin-bottom: 1rem; border-radius: 4px; border-left: 4px solid; {% if category == 'error' %}background-color: #fee; border-color: #c33; color: #c33;{% else %}background-color: #efe; border-color: #3c3; color: #363;{% endif %}">
+              {{ message }}
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
     {% block content %}{% endblock %}
   </main>
 </body>

@@ -1,0 +1,91 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="container">
+    <div style="margin-bottom: 1.5rem;">
+        <h2 style="margin: 0 0 1rem 0;">Scheduling Statistics</h2>
+    </div>
+
+    <!-- Period Selector -->
+    <div style="margin-bottom: 1.5rem; display: flex; gap: 0.5rem;">
+        <a href="/statistics?period=all" class="btn {% if period == 'all' %}btn-primary{% else %}btn-secondary{% endif %}" style="text-decoration: none;">All Time</a>
+        <a href="/statistics?period=week" class="btn {% if period == 'week' %}btn-primary{% else %}btn-secondary{% endif %}" style="text-decoration: none;">This Week</a>
+        <a href="/statistics?period=month" class="btn {% if period == 'month' %}btn-primary{% else %}btn-secondary{% endif %}" style="text-decoration: none;">This Month</a>
+    </div>
+
+    <!-- Overview Cards -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+        <div class="card" style="padding: 1.5rem;">
+            <h4 style="margin: 0 0 0.5rem 0; color: var(--text-light); font-size: 0.85rem; text-transform: uppercase;">Total Events</h4>
+            <div style="font-size: 2rem; font-weight: bold; color: var(--primary);">{{ stats.total_events }}</div>
+        </div>
+
+        <div class="card" style="padding: 1.5rem;">
+            <h4 style="margin: 0 0 0.5rem 0; color: var(--text-light); font-size: 0.85rem; text-transform: uppercase;">Fill Rate</h4>
+            <div style="font-size: 2rem; font-weight: bold; color: var(--primary);">{{ "%.1f"|format(stats.fill_rate_percentage) }}%</div>
+        </div>
+
+        <div class="card" style="padding: 1.5rem;">
+            <h4 style="margin: 0 0 0.5rem 0; color: var(--text-light); font-size: 0.85rem; text-transform: uppercase;">Understaffed</h4>
+            <div style="font-size: 2rem; font-weight: bold; color: var(--warning);">{{ stats.understaffed_events }}</div>
+        </div>
+
+        <div class="card" style="padding: 1.5rem;">
+            <h4 style="margin: 0 0 0.5rem 0; color: var(--text-light); font-size: 0.85rem; text-transform: uppercase;">Pending Approvals</h4>
+            <div style="font-size: 2rem; font-weight: bold; color: var(--danger);">{{ stats.pending_approvals }}</div>
+        </div>
+
+        <div class="card" style="padding: 1.5rem;">
+            <h4 style="margin: 0 0 0.5rem 0; color: var(--text-light); font-size: 0.85rem; text-transform: uppercase;">Total Shifts</h4>
+            <div style="font-size: 2rem; font-weight: bold; color: var(--primary);">{{ stats.total_shifts_filled }}</div>
+        </div>
+    </div>
+
+    <!-- Employee Performance Table -->
+    <div class="card" style="padding: 1.5rem;">
+        <h3 style="margin-top: 0;">Employee Performance</h3>
+        {% if stats.employee_stats %}
+            <div style="overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse;">
+                    <thead style="background-color: var(--bg);">
+                        <tr>
+                            <th style="text-align: left; padding: 0.75rem; border-bottom: 2px solid var(--border); font-weight: 600;">Employee</th>
+                            <th style="text-align: center; padding: 0.75rem; border-bottom: 2px solid var(--border); font-weight: 600;">Shifts Assigned</th>
+                            <th style="text-align: center; padding: 0.75rem; border-bottom: 2px solid var(--border); font-weight: 600;">Total Hours</th>
+                            <th style="text-align: center; padding: 0.75rem; border-bottom: 2px solid var(--border); font-weight: 600;">Utilization Rate</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for employee in stats.employee_stats %}
+                            <tr style="border-bottom: 1px solid var(--border);">
+                                <td style="padding: 0.75rem; text-align: left;">{{ employee.username }}</td>
+                                <td style="padding: 0.75rem; text-align: center;">{{ employee.shifts_assigned }}</td>
+                                <td style="padding: 0.75rem; text-align: center;">{{ employee.total_hours }} hrs</td>
+                                <td style="padding: 0.75rem; text-align: center;">
+                                    <div style="display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
+                                        <div style="width: 80px; height: 6px; background-color: #eee; border-radius: 3px; overflow: hidden;">
+                                            {% if employee.utilization_rate < 20 %}
+                                                <div style="width: {{ employee.utilization_rate }}%; height: 100%; background-color: var(--danger);"></div>
+                                            {% elif employee.utilization_rate < 60 %}
+                                                <div style="width: {{ employee.utilization_rate }}%; height: 100%; background-color: var(--warning);"></div>
+                                            {% elif employee.utilization_rate < 90 %}
+                                                <div style="width: {{ employee.utilization_rate }}%; height: 100%; background-color: var(--success);"></div>
+                                            {% else %}
+                                                <div style="width: 100%; height: 100%; background-color: #2196F3;"></div>
+                                            {% endif %}
+                                        </div>
+                                        <span style="min-width: 45px; text-align: right;">{{ "%.1f"|format(employee.utilization_rate) }}%</span>
+                                    </div>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div style="text-align: center; color: var(--text-light); padding: 2rem;">
+                <p>No employee data available for the selected period.</p>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
