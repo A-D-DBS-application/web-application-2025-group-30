@@ -71,7 +71,7 @@ def shifts_overlap(shift1: Dict, shift2: Dict) -> bool:
         return False
 
 
-def has_sufficient_break(shift1: Dict, shift2: Dict, min_break_hours: float = 8.0) -> bool:
+def has_sufficient_break(shift1: Dict, shift2: Dict, min_break_hours: float = 1.0) -> bool:
     """Check if there's sufficient break between two shifts"""
     try:
         end1 = parse_datetime(shift1.get('end', ''))

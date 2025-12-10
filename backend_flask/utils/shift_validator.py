@@ -2,7 +2,7 @@
 Shift Validation Module
 Validates that employee assignments meet scheduling constraints:
 - No overlapping shifts
-- Minimum break time between shifts (configurable, default 8 hours)
+- Minimum break time between shifts (configurable, default 1 hour)
 - Maximum hours per day (configurable, default 12 hours)
 """
 
@@ -24,7 +24,7 @@ def validate_assignment(
     employee_id: str,
     event: Dict,
     all_events: List[Dict],
-    min_break_hours: float = 8.0,
+    min_break_hours: float = 1.0,
     max_daily_hours: float = 12.0
 ) -> Tuple[bool, List[Dict]]:
     """
