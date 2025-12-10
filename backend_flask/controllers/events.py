@@ -1,22 +1,9 @@
 from flask import Blueprint, request, jsonify, session, redirect, url_for, render_template, flash
 import os
-import sys
 import jwt
-from models import create_event, list_events, assign_user_to_event, subscribe_user_to_event, confirm_user_assignment, get_event_by_id, delete_event, update_event, is_employee_available
-
-# Import conflict detection algorithm
-algoritme_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'Flask', 'app'))
-if algoritme_path not in sys.path:
-    sys.path.insert(0, algoritme_path)
-
-try:
-    from algoritme1 import validate_assignment
-    print("✓ Conflict detection algorithm loaded successfully")
-except ImportError as e:
-    print(f"✗ Failed to import algoritme1: {e}")
-    # Fallback if import fails - ALLOW all assignments (no conflict checking)
-    def validate_assignment(employee_id, event, all_events, min_break_hours=8.0, max_daily_hours=12.0):
-        return True, []
+from models import create_event, list_events, assign_user_to_event, subscribe_user_to_event, confirm_user_assignment, get_event_by_id, delete_event, update_event, is_employee_available, unassign_user_from_event, get_user_assigned_events, list_users, list_availabilities
+from utils.shift_validator import validate_assignment
+from utils.ilp_assignment import suggest_assignments, auto_assign_shift
 
 events_bp = Blueprint("events", __name__)
 SECRET = os.getenv("SECRET_KEY", "dev-secret")
@@ -31,7 +18,7 @@ def get_events():
 def create_new_event():
     if "user_id" not in session:
         return redirect(url_for("index"))
-        
+    
     data = request.form
     # description is optional in code but UI will send it
     # Combine date and time if separate
@@ -97,17 +84,10 @@ def unassign_event(event_id):
     if not user_id:
         return redirect(url_for("manager"))
     
-    # Get the event and remove the employee from assigned list
-    event = get_event_by_id(event_id)
-    if event:
-        assigned = event.get('assigned', [])
-        if user_id in assigned:
-            assigned.remove(user_id)
-            # Update the event with the new assigned list
-            update_event(event_id, {'assigned': assigned})
-            flash("Employee removed from event successfully!", "success")
-        else:
-            flash("Employee not found in this event", "error")
+    if unassign_user_from_event(event_id, user_id):
+        flash("Employee removed from event successfully!", "success")
+    else:
+        flash("Error removing employee from event", "error")
     
     return redirect(url_for("manager"))
 
@@ -218,6 +198,168 @@ def get_shifts():
     except Exception:
         return jsonify([])
     user_id = payload.get("sub")
-    all_events = list_events()
-    user_events = [e for e in all_events if user_id in (e.get("assigned") or [])]
+    
+    user_events = get_user_assigned_events(user_id)
     return jsonify(user_events)
+
+
+@events_bp.route("/<event_id>/suggestions", methods=["GET"])
+def get_assignment_suggestions(event_id):
+    """
+    Get AI-powered assignment suggestions for a shift
+    
+    Returns top 5 employee candidates with scores and reasoning
+    
+    Query params:
+    - count: number of suggestions (default 5)
+    """
+    if "user_id" not in session:
+        return jsonify({"error": "Not authenticated"}), 401
+    
+    # Get the shift/event
+    shift = get_event_by_id(event_id)
+    if not shift:
+        return jsonify({"error": "Event not found"}), 404
+    
+    try:
+        # Get all employees, events, and availabilities for algorithm
+        employees = list_users()
+        all_events = list_events()
+        availabilities = list_availabilities()
+        
+        # Filter out any None values AND employees without IDs
+        employees = [e for e in employees if e and e.get('id')]
+        all_events = [e for e in all_events if e]
+        availabilities = [a for a in availabilities if a]
+        
+        # Get count parameter
+        count = request.args.get('count', 5, type=int)
+        count = max(1, min(count, 30))  # Clamp between 1 and 30
+        
+        # Build current assignments dict (emp_id -> [shift_ids])
+        # For MVP, assume no existing assignments yet
+        current_assignments = {}
+        
+        # Get suggestions
+        suggestions = suggest_assignments(
+            shift,
+            employees,
+            all_events,
+            availabilities,
+            current_assignments,
+            count=count
+        )
+        
+        # Format response
+        return jsonify({
+            "shift_id": event_id,
+            "shift_title": shift.get('title', 'Unknown'),
+            "suggestions": suggestions,
+            "count": len(suggestions)
+        })
+    
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@events_bp.route("/<event_id>/autofill", methods=["POST"])
+def autofill_shift(event_id):
+    """
+    Automatically assign employees to fill remaining shift slots
+    
+    Uses the greedy algorithm to select the best candidates and assigns them
+    
+    Returns:
+    - List of newly assigned employees
+    - Number of slots filled
+    - Any errors if insufficient candidates
+    """
+    if "user_id" not in session:
+        return jsonify({"error": "Not authenticated"}), 401
+    
+    # Get the shift/event
+    shift = get_event_by_id(event_id)
+    if not shift:
+        return jsonify({"error": "Event not found"}), 404
+    
+    try:
+        # Get all employees, events, and availabilities for algorithm
+        employees = list_users()
+        all_events = list_events()
+        availabilities = list_availabilities()
+        
+        # Filter out any None values AND employees without IDs
+        employees = [e for e in employees if e and e.get('id')]
+        all_events = [e for e in all_events if e]
+        availabilities = [a for a in availabilities if a]
+        
+        # Calculate how many slots need to be filled
+        capacity = shift.get('capacity', 1)
+        already_assigned = len(shift.get('assigned', []))
+        slots_to_fill = max(0, capacity - already_assigned)
+        
+        if slots_to_fill == 0:
+            return jsonify({
+                "shift_id": event_id,
+                "message": "Shift is already fully staffed",
+                "capacity": capacity,
+                "assigned": already_assigned,
+                "newly_assigned": [],
+                "count": 0
+            }), 200
+        
+        # Build current assignments dict (emp_id -> [shift_ids])
+        # Map existing assignments from all events
+        # IMPORTANT: Only track assignments for employees that actually exist
+        current_assignments = {}
+        valid_employee_ids = {e.get('id') for e in employees if e.get('id')}
+        
+        for event in all_events:
+            for emp_id in event.get('assigned', []):
+                # Only track if this employee actually exists
+                if emp_id in valid_employee_ids:
+                    if emp_id not in current_assignments:
+                        current_assignments[emp_id] = []
+                    current_assignments[emp_id].append(event.get('id'))
+        
+        # Auto-assign using the algorithm
+        assigned, errors = auto_assign_shift(
+            shift,
+            employees,
+            all_events,
+            availabilities,
+            current_assignments,
+            capacity_to_fill=slots_to_fill
+        )
+        
+        # Actually assign them in the database
+        newly_assigned = []
+        valid_employee_ids = {e.get('id') for e in employees if e.get('id')}
+        
+        for emp_id in assigned:
+            # STRICT validation: employee must be in our original employees list
+            if emp_id not in valid_employee_ids:
+                # Silently skip non-existent employees
+                continue
+            
+            try:
+                if assign_user_to_event(event_id, emp_id):
+                    newly_assigned.append(emp_id)
+            except Exception as e:
+                # Log but continue with other assignments
+                pass
+        
+        return jsonify({
+            "shift_id": event_id,
+            "shift_title": shift.get('title', 'Unknown'),
+            "capacity": capacity,
+            "previously_assigned": already_assigned,
+            "slots_needed": slots_to_fill,
+            "newly_assigned": newly_assigned,
+            "count": len(newly_assigned),
+            "errors": errors if errors else []
+        }), 200
+    
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+

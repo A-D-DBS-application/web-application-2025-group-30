@@ -1,3 +1,4 @@
+-- Simple, single-company schema (no multi-tenant)
 -- Run this in Supabase SQL Editor to RESET your database
 -- WARNING: This will delete all existing data!
 
@@ -5,32 +6,19 @@ drop table if exists public.event_assignments;
 drop table if exists public.availabilities;
 drop table if exists public.events;
 drop table if exists public.users;
-drop table if exists public.companies;
 
--- Companies table
-create table public.companies (
-  id uuid default gen_random_uuid() primary key,
-  name text not null,
-  logo_url text,
-  registration_code text unique not null,
-  owner_id uuid references public.users(id) on delete set null,
-  created_at timestamp with time zone default timezone('utc'::text, now()) not null
-);
-
--- Users table
+-- Users table (simple, no company_id)
 create table public.users (
   id uuid default gen_random_uuid() primary key,
   username text unique not null,
   password text not null,
   role text default 'employee',
-  company_id uuid references public.companies(id) on delete cascade,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
--- Events table
+-- Events table (simple, no company_id)
 create table public.events (
   id uuid default gen_random_uuid() primary key,
-  company_id uuid not null references public.companies(id) on delete cascade,
   title text,
   description text,
   "start" text,
@@ -51,10 +39,9 @@ create table public.event_assignments (
   unique(event_id, user_id)
 );
 
--- Availabilities table
+-- Availabilities table (simple, no company_id)
 create table public.availabilities (
   id uuid default gen_random_uuid() primary key,
-  company_id uuid not null references public.companies(id) on delete cascade,
   user_id uuid not null references public.users(id) on delete cascade,
   "start" text,
   "end" text,
@@ -63,14 +50,12 @@ create table public.availabilities (
 );
 
 -- Enable Row Level Security (RLS)
-alter table public.companies enable row level security;
 alter table public.users enable row level security;
 alter table public.events enable row level security;
 alter table public.event_assignments enable row level security;
 alter table public.availabilities enable row level security;
 
--- Create policies (simplified for this demo - allow all access)
-create policy "Allow all access to companies" on public.companies for all using (true);
+-- Create policies (allow all access)
 create policy "Allow all access to users" on public.users for all using (true);
 create policy "Allow all access to events" on public.events for all using (true);
 create policy "Allow all access to event_assignments" on public.event_assignments for all using (true);

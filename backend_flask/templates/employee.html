@@ -6,7 +6,10 @@
         <div>
             <!-- Calendar Section -->
             <div class="card" style="padding: 1.5rem; margin-bottom: 1.5rem;">
-                <h2 style="margin-top: 0;">My Schedule</h2>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                    <h2 style="margin: 0;">My Schedule</h2>
+                    <a href="/ical/subscribe" class="btn btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.85rem; text-decoration: none;">📅 Subscribe to Calendar</a>
+                </div>
                 <div id="calendar" style="min-height: 500px;">
                     {% set month_names = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'] %}
                     

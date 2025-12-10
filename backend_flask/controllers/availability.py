@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify, session, redirect, url_for
 import os
 import jwt
-from models import create_availability, list_availabilities, get_availability_for_user
+from models import create_availability, list_availabilities, get_availability_for_user, get_user_by_id
 
 availability_bp = Blueprint("availability", __name__)
 SECRET = os.getenv("SECRET_KEY", "dev-secret")

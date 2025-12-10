@@ -1,12 +1,9 @@
 import os
-from flask import Blueprint, request, jsonify, session, redirect, url_for, render_template
-import jwt
-import bcrypt
-from models import create_user, find_user_by_username, get_user_public
+from flask import Blueprint, request, render_template, session, redirect, url_for
+from models import create_user, find_user_by_username
 
 auth_bp = Blueprint("auth", __name__)
 SECRET = os.getenv("SECRET_KEY", "dev-secret")
-ALGORITHM = "HS256"
 
 @auth_bp.route("/register", methods=["POST"])
 def register():
@@ -20,8 +17,8 @@ def register():
         
     if find_user_by_username(username):
         return render_template("login.html", error="User exists")
-        
-    # No password required for registration; store empty password
+    
+    # Create user
     user = create_user(username, "", role)
     
     # Auto login

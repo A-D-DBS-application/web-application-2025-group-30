@@ -5,7 +5,7 @@ from controllers.users import users_bp
 from controllers.events import events_bp
 from controllers.availability import availability_bp
 from models import get_user_by_id, list_events, list_users, get_availability_for_user, search_and_filter_events, calculate_statistics
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret")
@@ -22,6 +22,8 @@ def format_date(date_string):
         return date_string
 
 app.jinja_env.filters['format_date'] = format_date
+
+
 
 # Register blueprints
 app.register_blueprint(auth_bp, url_prefix="/auth")
@@ -74,7 +76,7 @@ def dashboard():
     my_availabilities = get_availability_for_user(str(user["id"]))
     
     # Separate past and upcoming shifts
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
     upcoming_shifts = []
     past_shifts = []
     
@@ -118,6 +120,7 @@ def manager():
     month = request.args.get('month', type=int) or datetime.now().month
     year = request.args.get('year', type=int) or datetime.now().year
 
+    # Get all data
     all_events = list_events()
     all_users = list_users()
     # Filter to only employees
@@ -139,7 +142,7 @@ def manager():
     )
     
     # Separate past and upcoming events
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
     upcoming_events = []
     past_events = []
     
@@ -185,14 +188,17 @@ def statistics():
     if not user or user.get("role") != "manager":
         return redirect(url_for("dashboard"))
     
-    # Get all events and employees
-    all_events = list_events()
-    all_users = list_users()
+    # Get company_id from manager
+    company_id = user.get("company_id")
+    
+    # Get all events and employees for this company
+    all_events = list_events(company_id)
+    all_users = list_users(company_id)
     employees = [u for u in all_users if u.get("role") == "employee"]
     
-    # Get all availabilities
+    # Get all availabilities for this company
     from models import list_availabilities
-    all_availabilities = list_availabilities()
+    all_availabilities = list_availabilities(company_id)
     
     # Get time period filter
     period = request.args.get('period', 'all')  # all, week, month
@@ -202,7 +208,7 @@ def statistics():
     filtered_availabilities = all_availabilities
     
     if period != 'all':
-        today = datetime.now()
+        today = datetime.now(timezone.utc)
         if period == 'week':
             week_start = today - timedelta(days=today.weekday())  # Start of current week
             week_end = week_start + timedelta(days=7)

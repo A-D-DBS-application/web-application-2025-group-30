@@ -252,7 +252,10 @@
                                                             {% endif %}
                                                         {% endfor %}
                                                     </select>
-                                                    <button type="submit" class="btn btn-primary" style="padding: 0.4rem; font-size: 0.8rem;">Assign</button>
+                                                    <div style="display: flex; gap: 0.5rem;">
+                                                        <button type="submit" class="btn btn-primary" style="padding: 0.4rem; font-size: 0.8rem; flex: 1;">Assign</button>
+                                                        <button type="button" class="btn btn-success" style="padding: 0.4rem; font-size: 0.8rem; background: #4caf50;" onclick="autofillShift('{{ event.id }}', '{{ event.title }}')">🤖 Auto-Fill</button>
+                                                    </div>
                                                 </form>
                                             {% endif %}
                                         </div>
@@ -355,4 +358,44 @@
         </div>
     </div>
 </div>
+
+<script>
+function autofillShift(eventId, eventTitle) {
+    if (!confirm(`Auto-fill remaining slots for "${eventTitle}"?`)) {
+        return;
+    }
+
+    const btn = event.target;
+    btn.disabled = true;
+    btn.textContent = "⏳ Filling...";
+
+    fetch(`/events/${eventId}/autofill`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            alert(`Error: ${data.error}`);
+        } else {
+            const msg = `Assigned ${data.count} employees. ` + 
+                       `(${data.previously_assigned + data.count}/${data.capacity} total)`;
+            if (data.errors && data.errors.length > 0) {
+                alert(msg + `\n\nNotes: ${data.errors.join(', ')}`);
+            } else {
+                alert(msg);
+            }
+            // Reload page to show updates
+            location.reload();
+        }
+    })
+    .catch(error => {
+        alert(`Error: ${error.message}`);
+        btn.disabled = false;
+        btn.textContent = "🤖 Auto-Fill";
+    });
+}
+</script>
 {% endblock %}

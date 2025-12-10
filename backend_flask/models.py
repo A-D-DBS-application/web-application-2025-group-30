@@ -3,6 +3,8 @@ from typing import Dict, List, Optional
 from uuid import uuid4
 from supabase import create_client, Client
 from dotenv import load_dotenv
+import secrets
+import string
 
 load_dotenv()
 
@@ -18,27 +20,159 @@ else:
 
 # In-memory fallback (only used if supabase init fails)
 _MEM_USERS = {}
+_MEM_COMPANIES = {}
 _MEM_EVENTS = {}
 _MEM_AVAIL = {}
 
-def create_user(username: str, hashed_password: str, role: str = "employee") -> Dict:
+def create_company(name: str, logo_url: str = None, owner_id: str = None) -> Dict:
+    """Create a new company with a registration code"""
+    registration_code = generate_registration_code()
+    
+    if not supabase:
+        company_id = str(uuid4())
+        company = {
+            "id": company_id,
+            "name": name,
+            "logo_url": logo_url,
+            "registration_code": registration_code,
+            "owner_id": owner_id,
+            "created_at": None
+        }
+        _MEM_COMPANIES[company_id] = company
+        return company
+    
+    try:
+        company_data = {
+            "name": name,
+            "logo_url": logo_url,
+            "registration_code": registration_code,
+            "owner_id": owner_id
+        }
+        res = supabase.table("companies").insert(company_data).execute()
+        if res.data:
+            return res.data[0]
+    except Exception as e:
+        print(f"Error creating company: {e}")
+        # Fallback to in-memory
+        company_id = str(uuid4())
+        company = {
+            "id": company_id,
+            "name": name,
+            "logo_url": logo_url,
+            "registration_code": registration_code,
+            "owner_id": owner_id,
+            "created_at": None
+        }
+        _MEM_COMPANIES[company_id] = company
+        return company
+    
+    return None
+
+def generate_registration_code(length: int = 8) -> str:
+    """Generate a random registration code (e.g., ABC123XY)"""
+    chars = string.ascii_uppercase + string.digits
+    return ''.join(secrets.choice(chars) for _ in range(length))
+
+def get_company_by_code(code: str) -> Dict:
+    """Get company by registration code"""
+    if not code:
+        return None
+    
+    if not supabase:
+        # Check in-memory companies (not ideal but for fallback)
+        for company in _MEM_COMPANIES.values():
+            if company.get("registration_code") == code:
+                return company
+        return None
+    
+    try:
+        res = supabase.table("companies").select("*").eq("registration_code", code).execute()
+        if res.data:
+            return res.data[0]
+    except:
+        pass
+    return None
+
+def validate_registration_code(code: str) -> tuple[bool, str]:
+    """Validate a registration code. Returns (is_valid, error_message)"""
+    if not code or not code.strip():
+        return False, "Registration code is required"
+    
+    company = get_company_by_code(code.strip().upper())
+    if not company:
+        return False, "Invalid registration code"
+    
+    return True, ""
+
+def get_company_by_id(company_id: str) -> Dict:
+    """Get company by ID"""
+    if not company_id:
+        return None
+    
+    if company_id in _MEM_COMPANIES:
+        return _MEM_COMPANIES[company_id]
+    
+    if not supabase:
+        return None
+    
+    try:
+        res = supabase.table("companies").select("*").eq("id", company_id).execute()
+        if res.data:
+            return res.data[0]
+    except:
+        pass
+    return None
+
+def list_companies() -> List[Dict]:
+    """List all companies (used to check if system has any companies)"""
+    if not supabase:
+        return list(_MEM_COMPANIES.values())
+    
+    try:
+        res = supabase.table("companies").select("*").execute()
+        return res.data if res.data else []
+    except:
+        return list(_MEM_COMPANIES.values())
+
+def create_user(username: str, hashed_password: str, role: str = "employee", company_id: str = None) -> Dict:
     if not supabase:
         user_id = str(uuid4())
-        user = {"id": user_id, "username": username, "password": hashed_password, "role": role}
+        user = {"id": user_id, "username": username, "password": hashed_password, "role": role, "company_id": company_id}
         _MEM_USERS[user_id] = user
         return user
     
     # Supabase Insert
-    # Note: We are using a public 'users' table for simplicity to match existing logic.
-    # Ideally, use supabase.auth.sign_up() but that requires changing auth flow.
     data = {
         "username": username,
-        "password": hashed_password, # Storing plain/hashed as per current logic
+        "password": hashed_password,
         "role": role
     }
-    res = supabase.table("users").insert(data).execute()
-    if res.data:
-        return res.data[0]
+    if company_id:
+        data["company_id"] = company_id
+    
+    try:
+        res = supabase.table("users").insert(data).execute()
+        if res.data:
+            return res.data[0]
+    except Exception as e:
+        print(f"Error inserting user with company_id: {e}")
+        # Fallback: try without company_id
+        try:
+            data_no_company = {k: v for k, v in data.items() if k != "company_id"}
+            res = supabase.table("users").insert(data_no_company).execute()
+            if res.data:
+                user = res.data[0]
+                if company_id:
+                    user["company_id"] = company_id
+                return user
+        except Exception as e2:
+            print(f"Error inserting user even without company_id: {e2}")
+            # Final fallback to in-memory
+            user_id = str(uuid4())
+            user = {"id": user_id, "username": username, "password": hashed_password, "role": role, "company_id": company_id}
+            _MEM_USERS[user_id] = user
+            return user
+    
     return {}
 
 def find_user_by_username(username: str):
@@ -56,7 +190,7 @@ def find_user_by_username(username: str):
 def get_user_public(user: Dict) -> Dict:
     return {"id": user["id"], "username": user["username"], "role": user.get("role", "employee")}
 
-def create_event(data: Dict) -> Dict:
+def create_event(data: Dict, company_id: str = None) -> Dict:
     # normalize fields
     event_data = {
         "title": data.get("title") or data.get("name"),
@@ -65,11 +199,12 @@ def create_event(data: Dict) -> Dict:
         "end": data.get("end"),
         "capacity": int(data.get("capacity", data.get("amount", 1))),
         "type": data.get("type", "general"),
-        "location": data.get("location", ""),
-        "hours": data.get("hours", ""),
-        "assigned": data.get("assigned", []), # JSONB list of user_ids
-        "pending": data.get("pending", []),   # JSONB list of user_ids
+        "location": data.get("location", "")
     }
+    
+    # Add company_id if provided
+    if company_id:
+        event_data["company_id"] = company_id
 
     if not supabase:
         event_id = str(uuid4())
@@ -77,25 +212,95 @@ def create_event(data: Dict) -> Dict:
         _MEM_EVENTS[event_id] = event_data
         return event_data
 
-    res = supabase.table("events").insert(event_data).execute()
-    if res.data:
-        return res.data[0]
+    try:
+        res = supabase.table("events").insert(event_data).execute()
+        if res.data:
+            return res.data[0]
+    except Exception as e:
+        print(f"Error inserting event with company_id: {e}")
+        # Fallback: try without company_id if it fails (schema not updated)
+        try:
+            event_data_no_company = {k: v for k, v in event_data.items() if k != "company_id"}
+            res = supabase.table("events").insert(event_data_no_company).execute()
+            if res.data:
+                event = res.data[0]
+                # Add company_id to local copy if provided
+                if company_id:
+                    event["company_id"] = company_id
+                return event
+        except Exception as e2:
+            print(f"Error inserting event even without company_id: {e2}")
+            # Final fallback to in-memory
+            event_id = str(uuid4())
+            event_data["id"] = event_id
+            _MEM_EVENTS[event_id] = event_data
+            return event_data
+    
     return {}
 
-def list_events():
+def list_events(company_id: str = None):
     if not supabase:
-        return list(_MEM_EVENTS.values())
+        events = list(_MEM_EVENTS.values())
+        if company_id:
+            events = [e for e in events if e.get("company_id") == company_id]
+        return _enrich_events_with_assignments(events)
     
-    res = supabase.table("events").select("*").execute()
-    return res.data
+    try:
+        if company_id:
+            res = supabase.table("events").select("*").eq("company_id", company_id).execute()
+        else:
+            res = supabase.table("events").select("*").execute()
+        events = res.data if res.data else []
+    except Exception as e:
+        print(f"Error querying events with company_id filter: {e}")
+        # Fallback: get all events without company_id filter (schema might not be updated yet)
+        try:
+            res = supabase.table("events").select("*").execute()
+            events = res.data if res.data else []
+            # If company_id is requested, filter in memory
+            if company_id:
+                events = [e for e in events if e.get("company_id") == company_id]
+        except:
+            events = list(_MEM_EVENTS.values())
+    
+    return _enrich_events_with_assignments(events)
+
+def _enrich_events_with_assignments(events: List[Dict]) -> List[Dict]:
+    """Add assigned and pending user lists to events from event_assignments table"""
+    if not supabase:
+        return events
+    
+    for event in events:
+        event_id = event.get("id")
+        if not event_id:
+            continue
+        
+        try:
+            # Get confirmed assignments
+            confirmed = supabase.table("event_assignments").select("user_id").eq("event_id", event_id).eq("status", "confirmed").execute()
+            event["assigned"] = [r["user_id"] for r in confirmed.data] if confirmed.data else []
+            
+            # Get pending assignments
+            pending_res = supabase.table("event_assignments").select("user_id").eq("event_id", event_id).eq("status", "pending").execute()
+            event["pending"] = [r["user_id"] for r in pending_res.data] if pending_res.data else []
+        except Exception as e:
+            print(f"Error enriching event {event_id}: {e}")
+            event["assigned"] = []
+            event["pending"] = []
+    
+    return events
 
 def get_event_by_id(event_id: str):
     if not supabase:
-        return _MEM_EVENTS.get(event_id)
+        event = _MEM_EVENTS.get(event_id)
+        return event
     
     res = supabase.table("events").select("*").eq("id", event_id).execute()
     if res.data:
-        return res.data[0]
+        event = res.data[0]
+        # Enrich with assignments
+        enriched = _enrich_events_with_assignments([event])
+        return enriched[0] if enriched else event
     return None
 
 def update_event(event_id: str, data: Dict) -> bool:
@@ -114,12 +319,6 @@ def update_event(event_id: str, data: Dict) -> bool:
         event_data["location"] = data.get("location", "")
     if "type" in data:
         event_data["type"] = data.get("type", "general")
-    if "hours" in data:
-        event_data["hours"] = data.get("hours", "")
-    if "assigned" in data:
-        event_data["assigned"] = data.get("assigned", [])
-    if "pending" in data:
-        event_data["pending"] = data.get("pending", [])
     
     if not supabase:
         event = _MEM_EVENTS.get(event_id)
@@ -153,29 +352,41 @@ def assign_user_to_event(event_id: str, user_id: str) -> bool:
         if user_id in pending: pending.remove(user_id)
         return True
 
-    # Fetch current event to check capacity and current lists
-    res = supabase.table("events").select("*").eq("id", event_id).execute()
-    if not res.data:
-        return False
-    
-    event = res.data[0]
-    assigned = event.get("assigned") or []
-    pending = event.get("pending") or []
-    capacity = event.get("capacity", 1)
-
-    if user_id in assigned:
+    try:
+        # CRITICAL: Validate that user exists before assigning
+        user = get_user_by_id(user_id)
+        if not user:
+            print(f"Cannot assign: user {user_id} does not exist")
+            return False
+        
+        # Get event to check capacity
+        event = get_event_by_id(event_id)
+        if not event:
+            return False
+        
+        # Check if already assigned
+        res = supabase.table("event_assignments").select("*").eq("event_id", event_id).eq("user_id", user_id).execute()
+        if res.data:
+            # Update status to confirmed if it exists
+            supabase.table("event_assignments").update({"status": "confirmed"}).eq("event_id", event_id).eq("user_id", user_id).execute()
+            return True
+        
+        # Check capacity
+        capacity = event.get("capacity", 1)
+        count_res = supabase.table("event_assignments").select("*").eq("event_id", event_id).eq("status", "confirmed").execute()
+        if len(count_res.data) >= capacity:
+            return False
+        
+        # Insert as confirmed assignment
+        supabase.table("event_assignments").insert({
+            "event_id": event_id,
+            "user_id": user_id,
+            "status": "confirmed"
+        }).execute()
         return True
-    
-    if len(assigned) >= capacity:
+    except Exception as e:
+        print(f"Error assigning user to event: {e}")
         return False
-    
-    assigned.append(user_id)
-    if user_id in pending:
-        pending.remove(user_id)
-    
-    # Update
-    supabase.table("events").update({"assigned": assigned, "pending": pending}).eq("id", event_id).execute()
-    return True
 
 def subscribe_user_to_event(event_id: str, user_id: str) -> bool:
     if not supabase:
@@ -188,28 +399,43 @@ def subscribe_user_to_event(event_id: str, user_id: str) -> bool:
         pending.append(user_id)
         return True
 
-    res = supabase.table("events").select("*").eq("id", event_id).execute()
-    if not res.data:
+    try:
+        # Check if user is already assigned or pending
+        res = supabase.table("event_assignments").select("*").eq("event_id", event_id).eq("user_id", user_id).execute()
+        if res.data:
+            return True
+        
+        # Insert as pending assignment
+        supabase.table("event_assignments").insert({
+            "event_id": event_id,
+            "user_id": user_id,
+            "status": "pending"
+        }).execute()
+        return True
+    except Exception as e:
+        print(f"Error subscribing user to event: {e}")
         return False
-    
-    event = res.data[0]
-    assigned = event.get("assigned") or []
-    pending = event.get("pending") or []
 
-    if user_id in assigned:
+def unassign_user_from_event(event_id: str, user_id: str) -> bool:
+    """Remove a user's assignment from an event"""
+    if not supabase:
         return True
     
-    if user_id not in pending:
-        pending.append(user_id)
-        supabase.table("events").update({"pending": pending}).eq("id", event_id).execute()
-    
-    return True
+    try:
+        supabase.table("event_assignments").delete().eq("event_id", event_id).eq("user_id", user_id).execute()
+        return True
+    except Exception as e:
+        print(f"Error unassigning user from event: {e}")
+        return False
 
 def confirm_user_assignment(event_id: str, user_id: str) -> bool:
     return assign_user_to_event(event_id, user_id)
 
-def create_availability(user_id: str, start: str, end: str, note: str = "") -> Dict:
+def create_availability(user_id: str, start: str, end: str, note: str = "", company_id: str = None) -> Dict:
     data = {"user_id": user_id, "start": start, "end": end, "note": note}
+    
+    if company_id:
+        data["company_id"] = company_id
     
     if not supabase:
         avail_id = str(uuid4())
@@ -217,23 +443,83 @@ def create_availability(user_id: str, start: str, end: str, note: str = "") -> D
         _MEM_AVAIL[avail_id] = data
         return data
 
-    res = supabase.table("availabilities").insert(data).execute()
-    if res.data:
-        return res.data[0]
+    try:
+        res = supabase.table("availabilities").insert(data).execute()
+        if res.data:
+            return res.data[0]
+    except Exception as e:
+        print(f"Error inserting availability with company_id: {e}")
+        # Fallback: try without company_id if it fails
+        try:
+            data_no_company = {k: v for k, v in data.items() if k != "company_id"}
+            res = supabase.table("availabilities").insert(data_no_company).execute()
+            if res.data:
+                avail = res.data[0]
+                if company_id:
+                    avail["company_id"] = company_id
+                return avail
+        except Exception as e2:
+            print(f"Error inserting availability even without company_id: {e2}")
+            # Final fallback to in-memory
+            avail_id = str(uuid4())
+            data["id"] = avail_id
+            _MEM_AVAIL[avail_id] = data
+            return data
+    
     return {}
 
-def list_availabilities():
+def list_availabilities(company_id: str = None):
     if not supabase:
-        return list(_MEM_AVAIL.values())
-    res = supabase.table("availabilities").select("*").execute()
-    return res.data
-
-def get_availability_for_user(user_id: str):
-    if not supabase:
-        return [a for a in _MEM_AVAIL.values() if a.get("user_id") == user_id]
+        avails = list(_MEM_AVAIL.values())
+        if company_id:
+            avails = [a for a in avails if a.get("company_id") == company_id]
+        return avails
     
-    res = supabase.table("availabilities").select("*").eq("user_id", user_id).execute()
-    return res.data
+    try:
+        if company_id:
+            res = supabase.table("availabilities").select("*").eq("company_id", company_id).execute()
+        else:
+            res = supabase.table("availabilities").select("*").execute()
+        return res.data
+    except Exception as e:
+        print(f"Error querying availabilities with company_id filter: {e}")
+        # Fallback: get all availabilities and filter in memory
+        try:
+            res = supabase.table("availabilities").select("*").execute()
+            avails = res.data if res.data else []
+            if company_id:
+                avails = [a for a in avails if a.get("company_id") == company_id]
+            return avails
+        except:
+            return list(_MEM_AVAIL.values())
+
+def get_availability_for_user(user_id: str, company_id: str = None):
+    if not supabase:
+        avails = [a for a in _MEM_AVAIL.values() if a.get("user_id") == user_id]
+        if company_id:
+            avails = [a for a in avails if a.get("company_id") == company_id]
+        return avails
+    
+    try:
+        if company_id:
+            res = supabase.table("availabilities").select("*").eq("user_id", user_id).eq("company_id", company_id).execute()
+        else:
+            res = supabase.table("availabilities").select("*").eq("user_id", user_id).execute()
+        return res.data
+    except Exception as e:
+        print(f"Error querying availabilities for user: {e}")
+        # Fallback: get all and filter in memory
+        try:
+            res = supabase.table("availabilities").select("*").eq("user_id", user_id).execute()
+            avails = res.data if res.data else []
+            if company_id:
+                avails = [a for a in avails if a.get("company_id") == company_id]
+            return avails
+        except:
+            avails = [a for a in _MEM_AVAIL.values() if a.get("user_id") == user_id]
+            if company_id:
+                avails = [a for a in avails if a.get("company_id") == company_id]
+            return avails
 
 def get_user_by_id(user_id: str):
     if not supabase:
@@ -287,11 +573,51 @@ def is_employee_available(user_id: str, event_start: str, event_end: str) -> boo
     
     return False
 
-def list_users():
+def get_user_assigned_events(user_id: str) -> List[Dict]:
+    """Get all events assigned to a specific user"""
+    try:
+        if not supabase:
+            return []
+        
+        # Get event_ids assigned to this user from event_assignments table
+        assignments = supabase.table("event_assignments").select("event_id").eq("user_id", user_id).execute()
+        if not assignments.data:
+            return []
+        
+        event_ids = [a["event_id"] for a in assignments.data]
+        
+        # Get all events and filter by event_ids
+        all_events = list_events()
+        user_events = [e for e in all_events if e.get("id") in event_ids]
+        return user_events
+    except Exception as e:
+        print(f"Error getting user assigned events: {e}")
+        return []
+
+def list_users(company_id: str = None):
     if not supabase:
-        return list(_MEM_USERS.values())
-    res = supabase.table("users").select("*").execute()
-    return res.data
+        users = list(_MEM_USERS.values())
+        if company_id:
+            users = [u for u in users if u.get("company_id") == company_id]
+        return users
+    
+    try:
+        if company_id:
+            res = supabase.table("users").select("*").eq("company_id", company_id).execute()
+        else:
+            res = supabase.table("users").select("*").execute()
+        return res.data
+    except Exception as e:
+        print(f"Error querying users with company_id filter: {e}")
+        # Fallback: get all users and filter in memory
+        try:
+            res = supabase.table("users").select("*").execute()
+            users = res.data if res.data else []
+            if company_id:
+                users = [u for u in users if u.get("company_id") == company_id]
+            return users
+        except:
+            return list(_MEM_USERS.values())
 
 def search_and_filter_events(events, search_query="", filter_understaffed=False, filter_date_start="", filter_date_end=""):
     """
