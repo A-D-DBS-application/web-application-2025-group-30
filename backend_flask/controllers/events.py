@@ -11,48 +11,59 @@ SECRET = os.getenv("SECRET_KEY", "dev-secret")
 
 @events_bp.route("/", methods=["GET"])
 def get_events():
-    return jsonify(list_events())
+    # Multi-tenant: only return events for user's company
+    company_id = session.get("company_id")
+    return jsonify(list_events(company_id))
 
 
 @events_bp.route("/create", methods=["POST"])
 def create_new_event():
     if "user_id" not in session:
-        return redirect(url_for("index"))
+        return redirect(url_for("main.index"))
+    
+    company_id = session.get("company_id")
+    if not company_id:
+        flash("You must be part of a company to create events", "error")
+        return redirect(url_for("main.manager"))
     
     data = request.form
-    # description is optional in code but UI will send it
-    # Combine date and time if separate
     event_data = dict(data)
     
+    # Combine date and time if separate
     if "date" in data and "start_time" in data:
         event_data["start"] = f"{data['date']}T{data['start_time']}"
     if "date" in data and "end_time" in data:
         event_data["end"] = f"{data['date']}T{data['end_time']}"
-        
-    create_event(event_data)
-    return redirect(url_for("manager"))
+    
+    # Add company_id for multi-tenant isolation
+    event_data["company_id"] = company_id
+    
+    create_event(event_data, company_id)
+    return redirect(url_for("main.manager"))
 
 
 @events_bp.route("/<event_id>/assign", methods=["POST"])
 def assign_event(event_id):
     if "user_id" not in session:
-        return redirect(url_for("index"))
+        return redirect(url_for("main.index"))
+    
+    company_id = session.get("company_id")
     
     # Support both JSON and Form data for direct manager assignment
     data = request.get_json(silent=True) or request.form
     user_id = data.get("user_id")
     if not user_id:
-        return redirect(url_for("manager"))
+        return redirect(url_for("main.manager"))
     
     # Check for conflicts and availability before assigning
     current_event = get_event_by_id(event_id)
-    all_events = list_events()
+    all_events = list_events(company_id)
     
     if current_event:
         # Check availability first
         if not is_employee_available(user_id, current_event.get('start'), current_event.get('end')):
             flash("Cannot assign employee: they are not available during this event time", "error")
-            return redirect(url_for("manager"))
+            return redirect(url_for("main.manager"))
         
         # Then check for scheduling conflicts
         is_valid, conflicts = validate_assignment(user_id, current_event, all_events)
@@ -67,47 +78,48 @@ def assign_event(event_id):
                     conflict_msgs.append(f"⚠️ {conflict['message']}")
             
             flash("Cannot assign employee due to conflicts: " + " | ".join(conflict_msgs), "error")
-            return redirect(url_for("manager"))
+            return redirect(url_for("main.manager"))
     
     ok = assign_user_to_event(event_id, user_id)
     if ok:
         flash("Employee assigned successfully!", "success")
-    return redirect(url_for("manager"))
+    return redirect(url_for("main.manager"))
 
 
 @events_bp.route("/<event_id>/unassign", methods=["POST"])
 def unassign_event(event_id):
     if "user_id" not in session:
-        return redirect(url_for("index"))
+        return redirect(url_for("main.index"))
     
     user_id = request.form.get("user_id")
     if not user_id:
-        return redirect(url_for("manager"))
+        return redirect(url_for("main.manager"))
     
     if unassign_user_from_event(event_id, user_id):
         flash("Employee removed from event successfully!", "success")
     else:
         flash("Error removing employee from event", "error")
     
-    return redirect(url_for("manager"))
+    return redirect(url_for("main.manager"))
 
 
 @events_bp.route("/<event_id>/confirm", methods=["POST"])
 def confirm_event_subscription(event_id):
     if "user_id" not in session:
-        return redirect(url_for("index"))
-
+        return redirect(url_for("main.index"))
+    
+    company_id = session.get("company_id")
     user_id = request.form.get("user_id")
     if user_id:
         # Check availability and conflicts before confirming pending assignment
         current_event = get_event_by_id(event_id)
-        all_events = list_events()
+        all_events = list_events(company_id)
         
         if current_event:
             # Check availability first
             if not is_employee_available(user_id, current_event.get('start'), current_event.get('end')):
                 flash("Cannot confirm assignment: employee is not available during this event time", "error")
-                return redirect(url_for("manager"))
+                return redirect(url_for("main.manager"))
             
             is_valid, conflicts = validate_assignment(user_id, current_event, all_events)
             
@@ -121,42 +133,42 @@ def confirm_event_subscription(event_id):
                         conflict_msgs.append(f"⚠️ {conflict['message']}")
                 
                 flash("Cannot confirm assignment due to conflicts: " + " | ".join(conflict_msgs), "error")
-                return redirect(url_for("manager"))
+                return redirect(url_for("main.manager"))
         
         confirm_user_assignment(event_id, user_id)
         flash("Assignment confirmed successfully!", "success")
         
-    return redirect(url_for("manager"))
+    return redirect(url_for("main.manager"))
 
 
 @events_bp.route("/<event_id>/subscribe", methods=["POST"])
 def subscribe_event(event_id):
     if "user_id" not in session:
-        return redirect(url_for("index"))
+        return redirect(url_for("main.index"))
         
     user_id = session["user_id"]
     subscribe_user_to_event(event_id, user_id)
     
-    return redirect(url_for("dashboard"))
+    return redirect(url_for("main.dashboard"))
 
 
 @events_bp.route("/<event_id>/delete", methods=["POST"])
 def delete_event_route(event_id):
     if "user_id" not in session:
-        return redirect(url_for("index"))
+        return redirect(url_for("main.index"))
     
     delete_event(event_id)
-    return redirect(url_for("manager"))
+    return redirect(url_for("main.manager"))
 
 
 @events_bp.route("/<event_id>/edit", methods=["GET"])
 def edit_event_form(event_id):
     if "user_id" not in session:
-        return redirect(url_for("index"))
+        return redirect(url_for("main.index"))
     
     event = get_event_by_id(event_id)
     if not event:
-        return redirect(url_for("manager"))
+        return redirect(url_for("main.manager"))
     
     # Parse start and end times
     start_parts = event.get('start', '').split('T')

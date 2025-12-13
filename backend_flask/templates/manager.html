@@ -1,6 +1,12 @@
 {% extends "layout.html" %}
 {% block content %}
 <div class="container">
+    <!-- Company Header -->
+    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 1.5rem; border-radius: 8px; margin-bottom: 1.5rem;">
+        <h1 style="margin: 0;">{{ company_name or 'Company' }}</h1>
+        <p style="margin: 0.5rem 0 0 0; opacity: 0.9; font-size: 0.9rem;">Manager Dashboard</p>
+    </div>
+
     <div style="display: grid; grid-template-columns: 1fr 320px; gap: 1.5rem;">
         <!-- Calendar and Create Event Section -->
         <div>
@@ -126,6 +132,23 @@
         <!-- Event Widgets Sidebar -->
         <div>
             <h2 style="margin-top: 0;">Events</h2>
+            
+            <!-- Invite Employees Card (Registration Code) -->
+            <div class="card" style="padding: 1.5rem; margin-bottom: 1.5rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none;">
+                <h3 style="margin-top: 0; color: white;">📋 Invite Employees</h3>
+                <p style="font-size: 0.9rem; margin: 0.5rem 0;">Share this code with new team members to let them join your company:</p>
+                
+                <div style="background: rgba(255,255,255,0.2); padding: 1rem; border-radius: 8px; margin: 1rem 0; text-align: center;">
+                    <div style="font-size: 0.8rem; margin-bottom: 0.5rem; opacity: 0.9;">Company Registration Code:</div>
+                    <div style="font-size: 1.5rem; font-weight: bold; font-family: 'Courier New', monospace; letter-spacing: 3px;">{{ company_code or 'N/A' }}</div>
+                </div>
+                
+                <p style="font-size: 0.85rem; margin: 0.5rem 0; opacity: 0.95;">
+                    ✓ Employees can use this code during registration<br>
+                    ✓ They'll automatically join your company<br>
+                    ✓ Share across your team safely
+                </p>
+            </div>
             
             <!-- Search & Filter Form -->
             <div class="card" style="padding: 1rem; margin-bottom: 1rem;">

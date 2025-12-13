@@ -1,7 +1,7 @@
 from flask import Blueprint, request, redirect, url_for, flash, session, Response
 from icalendar import Calendar, Event
 from datetime import datetime
-from models import create_event, get_user_by_id, list_events, get_assigned_users_for_event
+from models import create_event, get_user_by_id, list_events, get_user_assigned_events
 import os
 
 ical_bp = Blueprint("ical", __name__, url_prefix="/ical")

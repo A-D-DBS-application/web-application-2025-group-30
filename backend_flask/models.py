@@ -1,22 +1,33 @@
 import os
 from typing import Dict, List, Optional
 from uuid import uuid4
-from supabase import create_client, Client
 from dotenv import load_dotenv
 import secrets
 import string
+
+# Try to import supabase, but make it optional
+try:
+    from supabase import create_client, Client
+    supabase_available = True
+except ImportError:
+    supabase_available = False
+    Client = None
 
 load_dotenv()
 
 url: str = os.environ.get("SUPABASE_URL")
 key: str = os.environ.get("SUPABASE_KEY")
 
-if not url or not key:
-    # Fallback for development if env vars are missing, but warn
-    print("WARNING: Supabase credentials not found. Using in-memory storage.")
-    supabase = None
+supabase = None
+if supabase_available and url and key:
+    try:
+        supabase = create_client(url, key)
+        print("✓ Connected to Supabase")
+    except Exception as e:
+        print(f"WARNING: Supabase connection failed: {e}. Using in-memory storage.")
+        supabase = None
 else:
-    supabase: Client = create_client(url, key)
+    print("WARNING: Supabase not available. Using in-memory storage.")
 
 # In-memory fallback (only used if supabase init fails)
 _MEM_USERS = {}
@@ -122,6 +133,29 @@ def get_company_by_id(company_id: str) -> Dict:
     except:
         pass
     return None
+
+def update_company_owner(company_id: str, owner_id: str) -> bool:
+    """Update company owner (set when first manager registers)"""
+    if not company_id or not owner_id:
+        return False
+    
+    if not supabase:
+        # Update in-memory
+        if company_id in _MEM_COMPANIES:
+            _MEM_COMPANIES[company_id]["owner_id"] = owner_id
+            return True
+        return False
+    
+    try:
+        supabase.table("companies").update({"owner_id": owner_id}).eq("id", company_id).execute()
+        return True
+    except Exception as e:
+        print(f"Error updating company owner: {e}")
+        # Fallback to in-memory
+        if company_id in _MEM_COMPANIES:
+            _MEM_COMPANIES[company_id]["owner_id"] = owner_id
+            return True
+        return False
 
 def list_companies() -> List[Dict]:
     """List all companies (used to check if system has any companies)"""
@@ -247,21 +281,23 @@ def list_events(company_id: str = None):
     
     try:
         if company_id:
+            # IMPORTANT: Only fetch events for this company
             res = supabase.table("events").select("*").eq("company_id", company_id).execute()
         else:
             res = supabase.table("events").select("*").execute()
         events = res.data if res.data else []
     except Exception as e:
         print(f"Error querying events with company_id filter: {e}")
-        # Fallback: get all events without company_id filter (schema might not be updated yet)
-        try:
-            res = supabase.table("events").select("*").execute()
-            events = res.data if res.data else []
-            # If company_id is requested, filter in memory
-            if company_id:
-                events = [e for e in events if e.get("company_id") == company_id]
-        except:
-            events = list(_MEM_EVENTS.values())
+        # Fallback: If company_id is provided, don't fetch events without it
+        if company_id:
+            events = []  # Return empty list instead of mixing companies
+        else:
+            # Only get all events if no company_id specified
+            try:
+                res = supabase.table("events").select("*").execute()
+                events = res.data if res.data else []
+            except:
+                events = list(_MEM_EVENTS.values())
     
     return _enrich_events_with_assignments(events)
 
@@ -483,15 +519,16 @@ def list_availabilities(company_id: str = None):
         return res.data
     except Exception as e:
         print(f"Error querying availabilities with company_id filter: {e}")
-        # Fallback: get all availabilities and filter in memory
-        try:
-            res = supabase.table("availabilities").select("*").execute()
-            avails = res.data if res.data else []
-            if company_id:
-                avails = [a for a in avails if a.get("company_id") == company_id]
-            return avails
-        except:
-            return list(_MEM_AVAIL.values())
+        # Fallback: If company_id is provided, don't fetch availabilities without it
+        if company_id:
+            return []  # Return empty list instead of mixing companies
+        else:
+            # Only get all availabilities if no company_id specified
+            try:
+                res = supabase.table("availabilities").select("*").execute()
+                return res.data if res.data else []
+            except:
+                return list(_MEM_AVAIL.values())
 
 def get_availability_for_user(user_id: str, company_id: str = None):
     if not supabase:
@@ -609,15 +646,16 @@ def list_users(company_id: str = None):
         return res.data
     except Exception as e:
         print(f"Error querying users with company_id filter: {e}")
-        # Fallback: get all users and filter in memory
-        try:
-            res = supabase.table("users").select("*").execute()
-            users = res.data if res.data else []
-            if company_id:
-                users = [u for u in users if u.get("company_id") == company_id]
-            return users
-        except:
-            return list(_MEM_USERS.values())
+        # Fallback: If company_id is provided, don't fetch users without it
+        if company_id:
+            return []  # Return empty list instead of mixing companies
+        else:
+            # Only get all users if no company_id specified
+            try:
+                res = supabase.table("users").select("*").execute()
+                return res.data if res.data else []
+            except:
+                return list(_MEM_USERS.values())
 
 def search_and_filter_events(events, search_query="", filter_understaffed=False, filter_date_start="", filter_date_end=""):
     """

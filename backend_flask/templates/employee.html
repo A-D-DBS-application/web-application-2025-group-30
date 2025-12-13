@@ -1,6 +1,12 @@
 {% extends "layout.html" %}
 {% block content %}
 <div class="container">
+    <!-- Company Header -->
+    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 1.5rem; border-radius: 8px; margin-bottom: 1.5rem;">
+        <h1 style="margin: 0;">{{ company_name or 'Company' }}</h1>
+        <p style="margin: 0.5rem 0 0 0; opacity: 0.9; font-size: 0.9rem;">Employee Dashboard</p>
+    </div>
+
     <div style="display: grid; grid-template-columns: 1fr 320px; gap: 1.5rem;">
         <!-- Calendar and Availability Form Section -->
         <div>
