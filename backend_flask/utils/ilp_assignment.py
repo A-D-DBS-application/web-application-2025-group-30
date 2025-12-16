@@ -207,14 +207,15 @@ def check_availability_constraint(employee_id: str,
     emp_availabilities = [a for a in availabilities if a.get('user_id') == employee_id]
     
     if not emp_availabilities:
-        # No availability submitted = assume available
-        return True, None
+        # No availability submitted = NOT available
+        return False, "No availability window submitted"
     
     # Check if shift is within any availability window
     shift_start = parse_datetime(shift.get('start', ''))
+    shift_end = parse_datetime(shift.get('end', ''))
     
-    if not shift_start:
-        return True, None
+    if not shift_start or not shift_end:
+        return False, "Invalid shift time format"
     
     for avail in emp_availabilities:
         try:
@@ -222,13 +223,13 @@ def check_availability_constraint(employee_id: str,
             avail_end = parse_datetime(avail.get('end', ''))
             
             if avail_start and avail_end:
-                # Check if shift start is within availability window
-                if avail_start <= shift_start <= avail_end:
+                # Check if ENTIRE shift is within availability window
+                if avail_start <= shift_start and shift_end <= avail_end:
                     return True, None
         except:
             pass
     
-    return False, "Not in availability window"
+    return False, "Shift is not fully within any availability window"
 
 
 def check_capacity_constraint(shift: Dict,

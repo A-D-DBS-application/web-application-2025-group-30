@@ -401,14 +401,23 @@ function autofillShift(eventId, eventTitle) {
     .then(response => response.json())
     .then(data => {
         if (data.error) {
-            alert(`Error: ${data.error}`);
+            alert(`❌ Error: ${data.error}`);
         } else {
-            const msg = `Assigned ${data.count} employees. ` + 
-                       `(${data.previously_assigned + data.count}/${data.capacity} total)`;
-            if (data.errors && data.errors.length > 0) {
-                alert(msg + `\n\nNotes: ${data.errors.join(', ')}`);
-            } else {
+            let msg = `✅ Assigned ${data.count} employee(s).\n`;
+            msg += `Staffing: ${data.previously_assigned + data.count}/${data.capacity}`;
+            
+            if (data.slots_unfilled && data.slots_unfilled > 0) {
+                msg += `\n\n⚠️ WARNING: ${data.slots_unfilled} slot(s) remain unfilled`;
+                msg += `\nInsufficient eligible employees available.`;
+                if (data.errors && data.errors.length > 0) {
+                    msg += `\n\nDetails:\n${data.errors.join('\n')}`;
+                }
                 alert(msg);
+            } else if (data.errors && data.errors.length > 0) {
+                msg += `\n\nℹ️ Notes:\n${data.errors.join('\n')}`;
+                alert(msg);
+            } else {
+                alert(msg + "\n\n✨ All slots filled!");
             }
             // Reload page to show updates
             location.reload();

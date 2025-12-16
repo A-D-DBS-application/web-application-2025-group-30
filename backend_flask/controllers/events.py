@@ -59,6 +59,15 @@ def assign_event(event_id):
     current_event = get_event_by_id(event_id)
     all_events = list_events(company_id)
     
+    print(f"\n=== PRE-ASSIGNMENT DEBUG ===")
+    print(f"All events ({len(all_events)} total):")
+    for evt in all_events:
+        print(f"  - {evt.get('title')}: {evt.get('start')} to {evt.get('end')}")
+        print(f"    Assigned: {evt.get('assigned', [])}")
+    print(f"Current event: {current_event.get('title') if current_event else 'None'}")
+    print(f"User to assign: {user_id}")
+    print(f"===========================\n")
+    
     if current_event:
         # Check availability first
         if not is_employee_available(user_id, current_event.get('start'), current_event.get('end')):
@@ -67,6 +76,17 @@ def assign_event(event_id):
         
         # Then check for scheduling conflicts
         is_valid, conflicts = validate_assignment(user_id, current_event, all_events)
+        
+        # Debug logging
+        print(f"\n=== ASSIGNMENT VALIDATION ===")
+        print(f"Employee: {user_id}")
+        print(f"Event: {current_event.get('title')} ({current_event.get('start')} - {current_event.get('end')})")
+        print(f"Valid: {is_valid}")
+        if conflicts:
+            print(f"Conflicts ({len(conflicts)}):")
+            for c in conflicts:
+                print(f"  [{c['severity']}] {c['message']}")
+        print(f"==============================\n")
         
         if not is_valid:
             # Format conflict messages for display
@@ -195,7 +215,7 @@ def update_event_route(event_id):
         event_data["end"] = f"{data['date']}T{data['end_time']}"
     
     update_event(event_id, event_data)
-    return redirect(url_for("manager"))
+    return redirect(url_for("main.manager"))
 
 
 @events_bp.route("/shifts", methods=["GET"])
@@ -289,6 +309,8 @@ def autofill_shift(event_id):
     if "user_id" not in session:
         return jsonify({"error": "Not authenticated"}), 401
     
+    company_id = session.get("company_id")
+    
     # Get the shift/event
     shift = get_event_by_id(event_id)
     if not shift:
@@ -296,9 +318,10 @@ def autofill_shift(event_id):
     
     try:
         # Get all employees, events, and availabilities for algorithm
-        employees = list_users()
-        all_events = list_events()
-        availabilities = list_availabilities()
+        # CRITICAL: Filter by company_id to avoid getting employees from other companies
+        employees = list_users(company_id)
+        all_events = list_events(company_id)
+        availabilities = list_availabilities(company_id)
         
         # Filter out any None values AND employees without IDs
         employees = [e for e in employees if e and e.get('id')]
@@ -317,7 +340,8 @@ def autofill_shift(event_id):
                 "capacity": capacity,
                 "assigned": already_assigned,
                 "newly_assigned": [],
-                "count": 0
+                "count": 0,
+                "errors": []
             }), 200
         
         # Build current assignments dict (emp_id -> [shift_ids])
@@ -344,6 +368,24 @@ def autofill_shift(event_id):
             capacity_to_fill=slots_to_fill
         )
         
+        # DEBUG LOGGING
+        print(f"\n=== AUTOFILL DEBUG ===")
+        print(f"Shift: {shift.get('title')} ({shift.get('start')} to {shift.get('end')})")
+        print(f"Company ID: {company_id}")
+        print(f"Valid employees available: {len(employees)}")
+        print(f"Employeee IDs: {[e.get('id') for e in employees]}")
+        print(f"Slots to fill: {slots_to_fill}")
+        print(f"Assigned employees: {assigned}")
+        print(f"Errors: {errors}")
+        print(f"====================\n")
+        
+        # Check if we couldn't fill all slots
+        slots_filled = len(assigned)
+        slots_unfilled = slots_to_fill - slots_filled
+        
+        if slots_unfilled > 0 and not errors:
+            errors.append(f"Could not fill {slots_unfilled} slot(s) - insufficient eligible employees available")
+        
         # Actually assign them in the database
         newly_assigned = []
         valid_employee_ids = {e.get('id') for e in employees if e.get('id')}
@@ -369,6 +411,7 @@ def autofill_shift(event_id):
             "slots_needed": slots_to_fill,
             "newly_assigned": newly_assigned,
             "count": len(newly_assigned),
+            "slots_unfilled": max(0, slots_to_fill - len(newly_assigned)),
             "errors": errors if errors else []
         }), 200
     

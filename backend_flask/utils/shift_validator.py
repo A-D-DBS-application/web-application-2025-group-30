@@ -52,6 +52,10 @@ def validate_assignment(
     if not event_start or not event_end:
         return False, [{"severity": "error", "message": "Invalid event time format"}]
     
+    # FIX: If end is before start, assume event goes through midnight
+    if event_end < event_start:
+        event_end = event_end.replace(day=event_end.day + 1)
+    
     event_duration = (event_end - event_start).total_seconds() / 3600  # hours
     
     # Find all assignments for this employee
@@ -62,10 +66,21 @@ def validate_assignment(
         
         # Check if employee is assigned to this event
         assigned = other_event.get('assigned', [])
-        if isinstance(assigned, list) and employee_id in assigned:
+        
+        # Ensure assigned is a list (might be string from DB)
+        if isinstance(assigned, str):
+            assigned = [s.strip() for s in assigned.split(',') if s.strip()]
+        elif not isinstance(assigned, list):
+            assigned = list(assigned) if assigned else []
+        
+        if employee_id in assigned:
             other_start = parse_datetime(other_event.get('start', ''))
             other_end = parse_datetime(other_event.get('end', ''))
             if other_start and other_end:
+                # FIX: If end is before start, assume event goes through midnight
+                if other_end < other_start:
+                    other_end = other_end.replace(day=other_end.day + 1)
+                
                 employee_assignments.append({
                     'event': other_event,
                     'start': other_start,

@@ -22,16 +22,16 @@ def import_ical():
     # Check if file was provided
     if 'calendar_file' not in request.files:
         flash("No file provided", "error")
-        return redirect(url_for("manager"))
+        return redirect(url_for("main.manager"))
     
     file = request.files['calendar_file']
     if file.filename == '':
         flash("No file selected", "error")
-        return redirect(url_for("manager"))
+        return redirect(url_for("main.manager"))
     
     if not file.filename.endswith('.ics'):
         flash("File must be in .ics format", "error")
-        return redirect(url_for("manager"))
+        return redirect(url_for("main.manager"))
     
     try:
         # Parse iCal file
@@ -101,11 +101,11 @@ def import_ical():
         if imported_count == 0 and errors:
             flash("No events were imported", "error")
         
-        return redirect(url_for("manager"))
+        return redirect(url_for("main.manager"))
     
     except Exception as e:
         flash(f"Error reading iCal file: {str(e)}", "error")
-        return redirect(url_for("manager"))
+        return redirect(url_for("main.manager"))
 
 @ical_bp.route("/feed/<token>")
 def calendar_feed(token):

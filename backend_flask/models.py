@@ -558,6 +558,27 @@ def get_availability_for_user(user_id: str, company_id: str = None):
                 avails = [a for a in avails if a.get("company_id") == company_id]
             return avails
 
+def delete_availability_for_user(user_id: str, company_id: str = None):
+    """Delete all availability entries for a user (when they update their availability)"""
+    if not supabase:
+        # In-memory deletion
+        to_delete = [k for k, v in _MEM_AVAIL.items() if v.get("user_id") == user_id]
+        if company_id:
+            to_delete = [k for k in to_delete if _MEM_AVAIL[k].get("company_id") == company_id]
+        for k in to_delete:
+            del _MEM_AVAIL[k]
+        return True
+
+    try:
+        if company_id:
+            supabase.table("availabilities").delete().eq("user_id", user_id).eq("company_id", company_id).execute()
+        else:
+            supabase.table("availabilities").delete().eq("user_id", user_id).execute()
+        return True
+    except Exception as e:
+        print(f"Error deleting availabilities for user: {e}")
+        return False
+
 def get_user_by_id(user_id: str):
     if not supabase:
         return _MEM_USERS.get(user_id)
