@@ -23,16 +23,16 @@
           <div>
             {% if session.get('user_role') == 'manager' %}
               {% if request.path == '/statistics' %}
-                <a href="/manager">Planner</a>
+                <a href="{{ url_for('main.manager') }}">Planner</a>
               {% else %}
-                <a href="/statistics">Statistics</a>
+                <a href="{{ url_for('main.statistics') }}">Statistics</a>
               {% endif %}
             {% endif %}
-            <a href="/logout">Logout</a>
+            <a href="{{ url_for('main.logout') }}">Logout</a>
           </div>
         </div>
       {% else %}
-        <a href="/">Login</a>
+        <a href="{{ url_for('main.index') }}">Login</a>
       {% endif %}
     </nav>
   </header>

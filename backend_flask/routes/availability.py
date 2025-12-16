@@ -29,25 +29,28 @@ def submit_availability():
     always_available = data.get("always_available") == "true"
     
     if always_available:
-        # For "always available", create an entry that spans a wide date range
-        # This makes the employee available for any shift
+        # For "always available", create an entry that spans 1 month
+        # This makes the employee available for any shift within that period
         from datetime import datetime, timedelta
         start = datetime.now().isoformat()
-        end = (datetime.now() + timedelta(days=365*2)).isoformat()  # 2 years ahead
+        end = (datetime.now() + timedelta(days=30)).isoformat()  # 1 month ahead
         note = data.get("note", "Always available")
         if note and note != "":
             note = f"Always available - {note}"
         else:
             note = "Always available"
+        create_availability(user_id, start, end, note, company_id)
     else:
         start = data.get("start")
         end = data.get("end")
         note = data.get("note", "")
         
         if not start or not end:
+            # If unchecking "always available" without providing new times,
+            # just delete all availabilities (removes "always available" status)
             return redirect(url_for("main.dashboard"))
-    
-    create_availability(user_id, start, end, note, company_id)
+        
+        create_availability(user_id, start, end, note, company_id)
         
     return redirect(url_for("main.dashboard"))
 

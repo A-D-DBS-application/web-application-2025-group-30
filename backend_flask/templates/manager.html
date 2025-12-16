@@ -4,7 +4,6 @@
     <!-- Company Header -->
     <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 1.5rem; border-radius: 8px; margin-bottom: 1.5rem;">
         <h1 style="margin: 0;">{{ company_name or 'Company' }}</h1>
-        <p style="margin: 0.5rem 0 0 0; opacity: 0.9; font-size: 0.9rem;">Manager Dashboard</p>
     </div>
 
     <div style="display: grid; grid-template-columns: 1fr 320px; gap: 1.5rem;">
@@ -182,7 +181,7 @@
                     
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
                         <button type="submit" class="btn btn-primary" style="padding: 0.5rem; font-size: 0.85rem;">Apply Filters</button>
-                        <a href="/manager?month={{ month }}&year={{ year }}" class="btn btn-secondary" style="padding: 0.5rem; font-size: 0.85rem; text-decoration: none; text-align: center;">Clear</a>
+                        <a href="{{ url_for('main.manager', month=month, year=year) }}" class="btn btn-secondary" style="padding: 0.5rem; font-size: 0.85rem; text-decoration: none; text-align: center;">Clear</a>
                     </div>
                 </form>
                 

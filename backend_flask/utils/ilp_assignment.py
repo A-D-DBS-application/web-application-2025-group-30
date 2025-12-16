@@ -11,9 +11,9 @@ Hard Constraints (Must Satisfy):
   5. Shift capacity must be met
 
 Soft Constraints (Optimize for Quality):
-  1. Fairness: even hour distribution (45% weight)
-  2. Availability match: shifts in preferred windows (35% weight)
-  3. Reliability: prefer employees with low no-show rates (20% weight)
+    1. Fairness: even hour distribution (60% weight)
+    2. Availability match: shifts in preferred windows (40% weight)
+
 """
 
 from datetime import datetime, timedelta, timezone
@@ -367,31 +367,6 @@ def calculate_availability_match_score(employee_id: str,
     return 0.3  # Outside all availability windows
 
 
-def calculate_reliability_score(employee_id: str,
-                                users: List[Dict]) -> float:
-    """
-    Soft Constraint 3: Reliability (20% weight)
-    
-    Score based on historical no-show rate
-    For MVP: Use default 0.8 (assume reliable)
-    
-    Later: Track no-shows in database and calculate actual rate
-    no_show_rate = no_shows / total_assignments
-    reliability_score = 1.0 - no_show_rate
-    """
-    
-    # Find user in list
-    user = next((u for u in users if u.get('id') == employee_id), None)
-    
-    if not user:
-        return 0.8  # Default
-    
-    # TODO: Implement actual no-show tracking
-    # For now, return default reliability score
-    
-    return 0.8
-
-
 def calculate_assignment_score(employee_id: str,
                                shift: Dict,
                                current_assignments: Dict[str, List[str]],
@@ -403,28 +378,24 @@ def calculate_assignment_score(employee_id: str,
     Calculate total soft constraint score for an assignment
     
     Combines:
-    - Fairness (45%)
-    - Availability match (35%)
-    - Reliability (20%)
+    - Fairness (60%)
+    - Availability match (40%)
     """
     
     if weights is None:
         weights = {
-            'fairness': 0.45,
-            'availability': 0.35,
-            'reliability': 0.20
+            'fairness': 0.60,
+            'availability': 0.40
         }
     
     # Calculate individual scores
     fairness = calculate_fairness_score(employee_id, current_assignments, all_events)
     availability = calculate_availability_match_score(employee_id, shift, availabilities)
-    reliability = calculate_reliability_score(employee_id, users)
     
     # Weighted combination
     total_score = (
         fairness * weights['fairness'] +
-        availability * weights['availability'] +
-        reliability * weights['reliability']
+        availability * weights['availability']
     )
     
     return total_score
@@ -457,8 +428,7 @@ def suggest_assignments(shift: Dict,
             'score': float,
             'breakdown': {
                 'fairness': float,
-                'availability': float,
-                'reliability': float
+                'availability': float
             },
             'reasons': [str]  # Why this person
         }, ...]
@@ -506,10 +476,7 @@ def suggest_assignments(shift: Dict,
         availability = calculate_availability_match_score(emp_id, shift, availabilities)
         if availability > 0.9:
             reasons.append("Shift is in preferred availability window")
-        
-        reliability = calculate_reliability_score(emp_id, employees)
-        if reliability > 0.85:
-            reasons.append("Good attendance history")
+        # Reliability disabled: no reason added
         
         # Add to candidates
         candidates.append({
@@ -518,8 +485,7 @@ def suggest_assignments(shift: Dict,
             'score': score,
             'breakdown': {
                 'fairness': round(fairness, 2),
-                'availability': round(availability, 2),
-                'reliability': round(reliability, 2)
+                'availability': round(availability, 2)
             },
             'reasons': reasons if reasons else ["Meets all requirements"]
         })

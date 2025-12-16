@@ -196,11 +196,6 @@ def manager():
     company_code = company.get("registration_code") if company else None
     company_name = company.get("name") if company else "Company"
     
-    # Debug logging
-    print(f"Manager route - company_id: {company_id}")
-    print(f"Manager route - company: {company}")
-    print(f"Manager route - company_code: {company_code}")
-    
     return render_template(
         "manager.html",
         user=user,

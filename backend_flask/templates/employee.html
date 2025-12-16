@@ -4,7 +4,6 @@
     <!-- Company Header -->
     <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 1.5rem; border-radius: 8px; margin-bottom: 1.5rem;">
         <h1 style="margin: 0;">{{ company_name or 'Company' }}</h1>
-        <p style="margin: 0.5rem 0 0 0; opacity: 0.9; font-size: 0.9rem;">Employee Dashboard</p>
     </div>
 
     <div style="display: grid; grid-template-columns: 1fr 320px; gap: 1.5rem;">
@@ -14,7 +13,7 @@
             <div class="card" style="padding: 1.5rem; margin-bottom: 1.5rem;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
                     <h2 style="margin: 0;">My Schedule</h2>
-                    <a href="/ical/subscribe" class="btn btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.85rem; text-decoration: none;">📅 Subscribe to Calendar</a>
+                    <a href="{{ url_for('ical.subscribe_info') }}" class="btn btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.85rem; text-decoration: none;">📅 Subscribe to Calendar</a>
                 </div>
                 <div id="calendar" style="min-height: 500px;">
                     {% set month_names = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'] %}
@@ -88,7 +87,7 @@
             <!-- Submit Availability Form -->
             <div class="card" style="padding: 1.5rem;">
                 <h3 style="margin-top: 0;">Submit Availability</h3>
-                <form action="/availability/submit" method="POST" style="font-size: 0.9rem;">
+                <form action="{{ url_for('availability.submit_availability') }}" method="POST" style="font-size: 0.9rem;">
                     <div style="margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid #e0e0e0;">
                         <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.9rem;">
                             <input type="checkbox" id="alwaysAvailable" name="always_available" value="true" style="width: 18px; height: 18px; cursor: pointer;">

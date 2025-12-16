@@ -1,7 +1,7 @@
 from flask import Blueprint, request, redirect, url_for, flash, session, Response
 from icalendar import Calendar, Event
 from datetime import datetime
-from models import create_event, get_user_by_id, list_events, get_user_assigned_events
+from models import create_event, get_user_by_id, list_events, get_user_assigned_events, get_event_by_id
 import os
 
 ical_bp = Blueprint("ical", __name__, url_prefix="/ical")
@@ -73,7 +73,7 @@ def import_ical():
                     else:
                         end_str = datetime.combine(end_dt, datetime.min.time()).isoformat()
                     
-                    # Create event with default capacity
+                    # Create event with default capacity and company_id
                     event_data = {
                         "title": summary,
                         "description": description,
@@ -84,7 +84,9 @@ def import_ical():
                         "type": "shift"
                     }
                     
-                    create_event(**event_data)
+                    # Add company_id for multi-tenant isolation
+                    company_id = user.get("company_id")
+                    create_event(event_data, company_id=company_id)
                     imported_count += 1
                 
                 except Exception as e:
@@ -127,13 +129,15 @@ def calendar_feed(token):
         cal.add('x-wr-caldesc', 'Your assigned shifts')
         cal.add('x-wr-timezone', 'UTC')
         
-        # Get all events
-        all_events = list_events()
+        # Get events for user's company
+        company_id = user.get("company_id")
+        all_events = list_events(company_id)
         
         # Filter to only events assigned to this user
         user_id = token  # Token is the user ID
         for event in all_events:
-            assigned_users = get_assigned_users_for_event(event["id"])
+            # Check if user is in the assigned list
+            assigned_users = event.get("assigned", [])
             if user_id in assigned_users:
                 # Create iCal event
                 ical_event = Event()

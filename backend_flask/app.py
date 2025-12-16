@@ -1,12 +1,12 @@
 import os
 from flask import Flask, jsonify, render_template, session, redirect, url_for, request
 from migrations import run_migrations
-from routes import main_bp
-from controllers.auth import auth_bp
-from controllers.users import users_bp
-from controllers.events import events_bp
-from controllers.availability import availability_bp
-from controllers.ical import ical_bp
+from routes.main import main_bp
+from routes.auth import auth_bp
+from routes.users import users_bp
+from routes.events import events_bp
+from routes.availability import availability_bp
+from routes.ical import ical_bp
 from models import get_user_by_id, list_events, list_users, get_availability_for_user, search_and_filter_events, calculate_statistics
 from datetime import datetime, timedelta, timezone
 

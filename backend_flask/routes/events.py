@@ -15,6 +15,98 @@ events_bp = Blueprint("events", __name__)
 SECRET = os.getenv("SECRET_KEY", "dev-secret")
 
 
+# ============ HELPER FUNCTIONS ============
+
+def check_auth():
+    """Check if user is authenticated. Returns user_id or None."""
+    return session.get("user_id")
+
+
+def validate_and_format_conflicts(conflicts):
+    """Format conflict messages for display."""
+    conflict_msgs = []
+    for conflict in conflicts:
+        icon = "❌" if conflict['severity'] == 'error' else "⚠️"
+        conflict_msgs.append(f"{icon} {conflict['message']}")
+    return " | ".join(conflict_msgs)
+
+
+def check_assignment_validity(user_id, event, company_id):
+    """Check if an employee can be assigned to an event.
+    
+    Returns: (is_valid, error_message)
+    """
+    if not is_employee_available(user_id, event.get('start'), event.get('end')):
+        return False, "Cannot assign employee: they are not available during this event time"
+    
+    all_events = list_events(company_id)
+    is_valid, conflicts = validate_assignment(user_id, event, all_events)
+    
+    if not is_valid:
+        conflict_msg = validate_and_format_conflicts(conflicts)
+        return False, f"Cannot assign employee due to conflicts: {conflict_msg}"
+    
+    return True, None
+
+
+def prepare_autofill_data(company_id, shift):
+    """Prepare and validate data for autofill operation.
+    
+    Returns: (employees, all_events, availabilities, valid_employee_ids, current_assignments)
+    """
+    # Get all data
+    employees = list_users(company_id)
+    all_events = list_events(company_id)
+    availabilities = list_availabilities(company_id)
+    
+    # Filter out None values and invalid entries
+    employees = [e for e in employees if e and e.get('id')]
+    all_events = [e for e in all_events if e]
+    availabilities = [a for a in availabilities if a]
+    
+    # Build current assignments
+    valid_employee_ids = {e.get('id') for e in employees if e.get('id')}
+    current_assignments = {}
+    
+    for event in all_events:
+        for emp_id in event.get('assigned', []):
+            if emp_id in valid_employee_ids:
+                if emp_id not in current_assignments:
+                    current_assignments[emp_id] = []
+                current_assignments[emp_id].append(event.get('id'))
+    
+    return employees, all_events, availabilities, valid_employee_ids, current_assignments
+
+
+def format_employee_name(employee):
+    """Build employee display name from available fields."""
+    name = f"{employee.get('first_name', '')} {employee.get('last_name', '')}".strip()
+    if not name:
+        name = employee.get('username', '')
+    if not name:
+        name = employee.get('email', 'Unknown User')
+    return name
+
+
+def parse_shift_time(event):
+    """Parse event datetime to formatted time strings.
+    
+    Returns: (start_time, end_time) as HH:MM strings
+    """
+    try:
+        start_dt = datetime.fromisoformat(event.get("start", "").replace('Z', '+00:00')) if event.get("start") else None
+        end_dt = datetime.fromisoformat(event.get("end", "").replace('Z', '+00:00')) if event.get("end") else None
+        start_time = start_dt.strftime('%H:%M') if start_dt else ""
+        end_time = end_dt.strftime('%H:%M') if end_dt else ""
+    except:
+        start_time = event.get("start", "").split("T")[1][:5] if "T" in event.get("start", "") else ""
+        end_time = event.get("end", "").split("T")[1][:5] if "T" in event.get("end", "") else ""
+    return start_time, end_time
+
+
+# ============ ROUTES ============
+
+
 @events_bp.route("/", methods=["GET"])
 def get_events():
     # Multi-tenant: only return events for user's company
@@ -50,65 +142,27 @@ def create_new_event():
 
 @events_bp.route("/<event_id>/assign", methods=["POST"])
 def assign_event(event_id):
-    if "user_id" not in session:
+    if not check_auth():
         return redirect(url_for("main.index"))
     
     company_id = session.get("company_id")
-    
-    # Support both JSON and Form data for direct manager assignment
     data = request.get_json(silent=True) or request.form
     user_id = data.get("user_id")
+    
     if not user_id:
         return redirect(url_for("main.manager"))
     
-    # Check for conflicts and availability before assigning
+    # Validate assignment
     current_event = get_event_by_id(event_id)
-    all_events = list_events(company_id)
-    
-    print(f"\n=== PRE-ASSIGNMENT DEBUG ===")
-    print(f"All events ({len(all_events)} total):")
-    for evt in all_events:
-        print(f"  - {evt.get('title')}: {evt.get('start')} to {evt.get('end')}")
-        print(f"    Assigned: {evt.get('assigned', [])}")
-    print(f"Current event: {current_event.get('title') if current_event else 'None'}")
-    print(f"User to assign: {user_id}")
-    print(f"===========================\n")
-    
     if current_event:
-        # Check availability first
-        if not is_employee_available(user_id, current_event.get('start'), current_event.get('end')):
-            flash("Cannot assign employee: they are not available during this event time", "error")
-            return redirect(url_for("main.manager"))
-        
-        # Then check for scheduling conflicts
-        is_valid, conflicts = validate_assignment(user_id, current_event, all_events)
-        
-        # Debug logging
-        print(f"\n=== ASSIGNMENT VALIDATION ===")
-        print(f"Employee: {user_id}")
-        print(f"Event: {current_event.get('title')} ({current_event.get('start')} - {current_event.get('end')})")
-        print(f"Valid: {is_valid}")
-        if conflicts:
-            print(f"Conflicts ({len(conflicts)}):")
-            for c in conflicts:
-                print(f"  [{c['severity']}] {c['message']}")
-        print(f"==============================\n")
-        
+        is_valid, error_msg = check_assignment_validity(user_id, current_event, company_id)
         if not is_valid:
-            # Format conflict messages for display
-            conflict_msgs = []
-            for conflict in conflicts:
-                if conflict['severity'] == 'error':
-                    conflict_msgs.append(f"❌ {conflict['message']}")
-                else:
-                    conflict_msgs.append(f"⚠️ {conflict['message']}")
-            
-            flash("Cannot assign employee due to conflicts: " + " | ".join(conflict_msgs), "error")
+            flash(error_msg, "error")
             return redirect(url_for("main.manager"))
     
-    ok = assign_user_to_event(event_id, user_id)
-    if ok:
+    if assign_user_to_event(event_id, user_id):
         flash("Employee assigned successfully!", "success")
+    
     return redirect(url_for("main.manager"))
 
 
@@ -131,39 +185,23 @@ def unassign_event(event_id):
 
 @events_bp.route("/<event_id>/confirm", methods=["POST"])
 def confirm_event_subscription(event_id):
-    if "user_id" not in session:
+    if not check_auth():
         return redirect(url_for("main.index"))
     
     company_id = session.get("company_id")
     user_id = request.form.get("user_id")
+    
     if user_id:
-        # Check availability and conflicts before confirming pending assignment
         current_event = get_event_by_id(event_id)
-        all_events = list_events(company_id)
-        
         if current_event:
-            # Check availability first
-            if not is_employee_available(user_id, current_event.get('start'), current_event.get('end')):
-                flash("Cannot confirm assignment: employee is not available during this event time", "error")
-                return redirect(url_for("main.manager"))
-            
-            is_valid, conflicts = validate_assignment(user_id, current_event, all_events)
-            
+            is_valid, error_msg = check_assignment_validity(user_id, current_event, company_id)
             if not is_valid:
-                # Format conflict messages for display
-                conflict_msgs = []
-                for conflict in conflicts:
-                    if conflict['severity'] == 'error':
-                        conflict_msgs.append(f"❌ {conflict['message']}")
-                    else:
-                        conflict_msgs.append(f"⚠️ {conflict['message']}")
-                
-                flash("Cannot confirm assignment due to conflicts: " + " | ".join(conflict_msgs), "error")
+                flash(error_msg, "error")
                 return redirect(url_for("main.manager"))
         
         confirm_user_assignment(event_id, user_id)
         flash("Assignment confirmed successfully!", "success")
-        
+    
     return redirect(url_for("main.manager"))
 
 
@@ -323,18 +361,7 @@ def autofill_shift(event_id):
         return jsonify({"error": "Event not found"}), 404
     
     try:
-        # Get all employees, events, and availabilities for algorithm
-        # CRITICAL: Filter by company_id to avoid getting employees from other companies
-        employees = list_users(company_id)
-        all_events = list_events(company_id)
-        availabilities = list_availabilities(company_id)
-        
-        # Filter out any None values AND employees without IDs
-        employees = [e for e in employees if e and e.get('id')]
-        all_events = [e for e in all_events if e]
-        availabilities = [a for a in availabilities if a]
-        
-        # Calculate how many slots need to be filled
+        # Calculate slots to fill
         capacity = shift.get('capacity', 1)
         already_assigned = len(shift.get('assigned', []))
         slots_to_fill = max(0, capacity - already_assigned)
@@ -350,19 +377,9 @@ def autofill_shift(event_id):
                 "errors": []
             }), 200
         
-        # Build current assignments dict (emp_id -> [shift_ids])
-        # Map existing assignments from all events
-        # IMPORTANT: Only track assignments for employees that actually exist
-        current_assignments = {}
-        valid_employee_ids = {e.get('id') for e in employees if e.get('id')}
-        
-        for event in all_events:
-            for emp_id in event.get('assigned', []):
-                # Only track if this employee actually exists
-                if emp_id in valid_employee_ids:
-                    if emp_id not in current_assignments:
-                        current_assignments[emp_id] = []
-                    current_assignments[emp_id].append(event.get('id'))
+        # Prepare data for autofill
+        employees, all_events, availabilities, valid_employee_ids, current_assignments = \
+            prepare_autofill_data(company_id, shift)
         
         # Auto-assign using the algorithm
         assigned, errors = auto_assign_shift(
@@ -373,17 +390,6 @@ def autofill_shift(event_id):
             current_assignments,
             capacity_to_fill=slots_to_fill
         )
-        
-        # DEBUG LOGGING
-        print(f"\n=== AUTOFILL DEBUG ===")
-        print(f"Shift: {shift.get('title')} ({shift.get('start')} to {shift.get('end')})")
-        print(f"Company ID: {company_id}")
-        print(f"Valid employees available: {len(employees)}")
-        print(f"Employeee IDs: {[e.get('id') for e in employees]}")
-        print(f"Slots to fill: {slots_to_fill}")
-        print(f"Assigned employees: {assigned}")
-        print(f"Errors: {errors}")
-        print(f"====================\n")
         
         # Check if we couldn't fill all slots
         slots_filled = len(assigned)
@@ -430,14 +436,10 @@ def autofill_shift(event_id):
 @events_bp.route("/swap/request", methods=["POST"])
 def request_swap():
     """Request a shift swap with another employee"""
-    print("[DEBUG] /swap/request called")
-    
     if "user_id" not in session:
-        print("[DEBUG] No user_id in session")
         return jsonify({"error": "Unauthorized"}), 401
     
     data = request.get_json() or request.form
-    print(f"[DEBUG] Request data: {data}")
     
     user_id = session.get("user_id")
     target_id = data.get("target_employee_id")
@@ -445,10 +447,7 @@ def request_swap():
     target_shift_id = data.get("target_shift_id")
     reason = data.get("reason", "")
     
-    print(f"[DEBUG] Params: user_id={user_id}, target_id={target_id}, my_shift_id={my_shift_id}, target_shift_id={target_shift_id}")
-    
     if not all([target_id, my_shift_id, target_shift_id]):
-        print(f"[DEBUG] Missing required fields")
         return jsonify({
             "error": "Missing required fields",
             "status": "error",
@@ -465,8 +464,6 @@ def request_swap():
     validator = ShiftSwapValidator(all_events)
     is_valid, issues = validator.validate_swap(user_id, target_id, my_shift_id, target_shift_id)
     
-    print(f"[DEBUG] Validation result: is_valid={is_valid}, issues={issues}")
-    
     if not is_valid:
         return jsonify({
             "status": "error",
@@ -474,13 +471,10 @@ def request_swap():
         }), 400
     
     # Create the request
-    print("[DEBUG] Creating swap request...")
     swap = create_shift_swap_request(user_id, target_id, my_shift_id, target_shift_id, reason)
     if swap:
-        print(f"[DEBUG] Swap created: {swap}")
         return jsonify({"status": "success", "message": "Swap request sent", "swap_id": swap.get('id')}), 201
     
-    print("[DEBUG] Failed to create swap")
     return jsonify({"status": "error", "error": "Failed to create swap"}), 500
 
 
@@ -558,27 +552,16 @@ def api_get_employees():
         return jsonify({"error": str(e), "employees": [], "current_user_id": session.get("user_id")}), 500
     
     emp_list = []
+    current_user = session.get("user_id")
     for e in employees:
         emp_id = e.get("id")
-        # Skip current user
-        if emp_id == session.get("user_id"):
-            continue
-        
-        # Build name from multiple sources
-        name = f"{e.get('first_name', '')} {e.get('last_name', '')}".strip()
-        if not name:
-            name = e.get('username', '')
-        if not name:
-            name = e.get('email', 'Unknown User')
-        
-        emp_list.append({"id": emp_id, "name": name})
-        print(f"[DEBUG] Added employee: {emp_id} ({name})")
+        if emp_id != current_user:
+            emp_list.append({"id": emp_id, "name": format_employee_name(e)})
     
     result = {
         "current_user_id": session.get("user_id"),
         "employees": emp_list
     }
-    print(f"[DEBUG] Returning {len(emp_list)} employees")
     return jsonify(result), 200
 
 
@@ -599,16 +582,7 @@ def api_get_employee_shifts(employee_id):
             assigned = [s.strip() for s in assigned.split(",") if s.strip()]
         
         if employee_id in assigned:
-            # Parse times for better formatting
-            try:
-                start_dt = datetime.fromisoformat(event.get("start", "").replace('Z', '+00:00')) if event.get("start") else None
-                end_dt = datetime.fromisoformat(event.get("end", "").replace('Z', '+00:00')) if event.get("end") else None
-                start_time = start_dt.strftime('%H:%M') if start_dt else ""
-                end_time = end_dt.strftime('%H:%M') if end_dt else ""
-            except:
-                start_time = event.get("start", "").split("T")[1][:5] if "T" in event.get("start", "") else ""
-                end_time = event.get("end", "").split("T")[1][:5] if "T" in event.get("end", "") else ""
-            
+            start_time, end_time = parse_shift_time(event)
             shifts.append({
                 "id": event.get("id"),
                 "title": event.get("title"),
