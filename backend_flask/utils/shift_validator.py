@@ -54,7 +54,7 @@ def validate_assignment(
     
     # FIX: If end is before start, assume event goes through midnight
     if event_end < event_start:
-        event_end = event_end.replace(day=event_end.day + 1)
+        event_end = event_end + timedelta(days=1)
     
     event_duration = (event_end - event_start).total_seconds() / 3600  # hours
     
@@ -79,7 +79,7 @@ def validate_assignment(
             if other_start and other_end:
                 # FIX: If end is before start, assume event goes through midnight
                 if other_end < other_start:
-                    other_end = other_end.replace(day=other_end.day + 1)
+                    other_end = other_end + timedelta(days=1)
                 
                 employee_assignments.append({
                     'event': other_event,
@@ -147,3 +147,33 @@ def validate_assignment(
     has_errors = any(c['severity'] == 'error' for c in conflicts)
     
     return not has_errors, conflicts
+
+class ShiftSwapValidator:
+    """Validates shift swap requests between employees"""
+    
+    def __init__(self, all_events: List[Dict]):
+        self.all_events = all_events
+    
+    def validate_swap(self, emp1_id: str, emp2_id: str, emp1_shift_id: str, emp2_shift_id: str) -> Tuple[bool, List[Dict]]:
+        """Validate if two employees can swap shifts"""
+        issues = []
+        
+        # Find the shifts
+        emp1_shift = next((e for e in self.all_events if e.get('id') == emp1_shift_id), None)
+        emp2_shift = next((e for e in self.all_events if e.get('id') == emp2_shift_id), None)
+        
+        if not emp1_shift or not emp2_shift:
+            issues.append({"severity": "error", "message": "One or both shifts not found"})
+            return False, issues
+        
+        # Check emp1 can do emp2's shift
+        valid1, conflicts1 = validate_assignment(emp1_id, emp2_shift, self.all_events)
+        if not valid1:
+            issues.extend(conflicts1)
+        
+        # Check emp2 can do emp1's shift
+        valid2, conflicts2 = validate_assignment(emp2_id, emp1_shift, self.all_events)
+        if not valid2:
+            issues.extend(conflicts2)
+        
+        return len([i for i in issues if i['severity'] == 'error']) == 0, issues

@@ -11,14 +11,26 @@
     <h1>Personnel Scheduler</h1>
     <nav>
       {% if session.get('user_id') %}
-        {% if session.get('user_role') == 'manager' %}
-          {% if request.path == '/statistics' %}
-            <a href="/manager">Planner</a>
-          {% else %}
-            <a href="/statistics">Statistics</a>
-          {% endif %}
-        {% endif %}
-        <a href="/logout">Logout</a>
+        <div style="display: flex; align-items: center; gap: 1rem;">
+          <span style="font-size: 0.9rem; color: white;">
+            Logged in as: <strong>{{ session.get('user_name', 'User') }}</strong>
+            {% if session.get('user_role') == 'manager' %}
+              <span style="color: #ffc107; margin-left: 0.5rem;">(Manager)</span>
+            {% else %}
+              <span style="color: #ffffff; margin-left: 0.5rem;">(Employee)</span>
+            {% endif %}
+          </span>
+          <div>
+            {% if session.get('user_role') == 'manager' %}
+              {% if request.path == '/statistics' %}
+                <a href="/manager">Planner</a>
+              {% else %}
+                <a href="/statistics">Statistics</a>
+              {% endif %}
+            {% endif %}
+            <a href="/logout">Logout</a>
+          </div>
+        </div>
       {% else %}
         <a href="/">Login</a>
       {% endif %}

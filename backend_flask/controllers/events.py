@@ -1,8 +1,14 @@
 from flask import Blueprint, request, jsonify, session, redirect, url_for, render_template, flash
 import os
 import jwt
-from models import create_event, list_events, assign_user_to_event, subscribe_user_to_event, confirm_user_assignment, get_event_by_id, delete_event, update_event, is_employee_available, unassign_user_from_event, get_user_assigned_events, list_users, list_availabilities
-from utils.shift_validator import validate_assignment
+import sys
+from datetime import datetime
+from models import (create_event, list_events, assign_user_to_event, subscribe_user_to_event, 
+                   confirm_user_assignment, get_event_by_id, delete_event, update_event, 
+                   is_employee_available, unassign_user_from_event, get_user_assigned_events, 
+                   list_users, list_availabilities, create_shift_swap_request, get_swap_requests,
+                   approve_shift_swap, reject_shift_swap)
+from utils.shift_validator import validate_assignment, ShiftSwapValidator
 from utils.ilp_assignment import suggest_assignments, auto_assign_shift
 
 events_bp = Blueprint("events", __name__)
@@ -418,3 +424,198 @@ def autofill_shift(event_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
+# ============ SHIFT SWAP ENDPOINTS ============
+
+@events_bp.route("/swap/request", methods=["POST"])
+def request_swap():
+    """Request a shift swap with another employee"""
+    print("[DEBUG] /swap/request called")
+    
+    if "user_id" not in session:
+        print("[DEBUG] No user_id in session")
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    data = request.get_json() or request.form
+    print(f"[DEBUG] Request data: {data}")
+    
+    user_id = session.get("user_id")
+    target_id = data.get("target_employee_id")
+    my_shift_id = data.get("initiator_shift_id") or data.get("my_shift_id")
+    target_shift_id = data.get("target_shift_id")
+    reason = data.get("reason", "")
+    
+    print(f"[DEBUG] Params: user_id={user_id}, target_id={target_id}, my_shift_id={my_shift_id}, target_shift_id={target_shift_id}")
+    
+    if not all([target_id, my_shift_id, target_shift_id]):
+        print(f"[DEBUG] Missing required fields")
+        return jsonify({
+            "error": "Missing required fields",
+            "status": "error",
+            "received": {
+                "target_employee_id": target_id,
+                "initiator_shift_id": my_shift_id,
+                "target_shift_id": target_shift_id
+            }
+        }), 400
+    
+    # Validate the swap
+    company_id = session.get("company_id")
+    all_events = list_events(company_id)
+    validator = ShiftSwapValidator(all_events)
+    is_valid, issues = validator.validate_swap(user_id, target_id, my_shift_id, target_shift_id)
+    
+    print(f"[DEBUG] Validation result: is_valid={is_valid}, issues={issues}")
+    
+    if not is_valid:
+        return jsonify({
+            "status": "error",
+            "issues": issues
+        }), 400
+    
+    # Create the request
+    print("[DEBUG] Creating swap request...")
+    swap = create_shift_swap_request(user_id, target_id, my_shift_id, target_shift_id, reason)
+    if swap:
+        print(f"[DEBUG] Swap created: {swap}")
+        return jsonify({"status": "success", "message": "Swap request sent", "swap_id": swap.get('id')}), 201
+    
+    print("[DEBUG] Failed to create swap")
+    return jsonify({"status": "error", "error": "Failed to create swap"}), 500
+
+
+@events_bp.route("/swaps/pending", methods=["GET"])
+def get_pending_swaps():
+    """Get pending swap requests for current user"""
+    if "user_id" not in session:
+        return jsonify({"error": "Unauthorized", "swaps": []}), 401
+    
+    user_id = session.get("user_id")
+    company_id = session.get("company_id")
+    try:
+        swaps = get_swap_requests(user_id, company_id)
+        return jsonify({"swaps": swaps or []}), 200
+    except Exception as e:
+        print(f"Error getting swap requests: {e}")
+        return jsonify({"swaps": [], "error": str(e)}), 200
+
+
+@events_bp.route("/swap/<swap_id>/approve", methods=["POST"])
+def approve_swap_endpoint(swap_id):
+    """Approve a shift swap"""
+    if "user_id" not in session:
+        return jsonify({"error": "Unauthorized", "status": "error"}), 401
+    
+    # Verify user is the target employee (the one approving)
+    user_id = session.get("user_id")
+    if not approve_shift_swap(swap_id, user_id):
+        return jsonify({"status": "error", "message": "Failed to approve or unauthorized"}), 403
+    
+    return jsonify({"status": "success", "message": "Swap approved"}), 200
+
+
+@events_bp.route("/swap/<swap_id>/reject", methods=["POST"])
+def reject_swap_endpoint(swap_id):
+    """Reject a shift swap"""
+    if "user_id" not in session:
+        return jsonify({"error": "Unauthorized", "status": "error"}), 401
+    
+    # Verify user is the target employee (the one rejecting)
+    user_id = session.get("user_id")
+    if not reject_shift_swap(swap_id, user_id):
+        return jsonify({"status": "error", "message": "Failed to reject or unauthorized"}), 403
+    
+    return jsonify({"status": "success", "message": "Swap rejected"}), 200
+
+
+@events_bp.route("/api/employees", methods=["GET"])
+def api_get_employees():
+    """Get all employees in current company"""
+    msg = f"[SWAP API] /api/employees called - session keys: {list(session.keys())}"
+    print(msg, file=sys.stderr)
+    sys.stderr.flush()
+    
+    if "user_id" not in session:
+        print("[SWAP API] No user_id in session, returning 401", file=sys.stderr)
+        sys.stderr.flush()
+        return jsonify({"error": "Unauthorized", "employees": []}), 401
+    
+    company_id = session.get("company_id")
+    user_id = session.get("user_id")
+    msg = f"[SWAP API] company_id: {company_id}, user_id: {user_id}"
+    print(msg, file=sys.stderr)
+    sys.stderr.flush()
+    
+    try:
+        employees = list_users(company_id)
+        msg = f"[SWAP API] Found {len(employees)} total employees in company {company_id}"
+        print(msg, file=sys.stderr)
+        sys.stderr.flush()
+    except Exception as e:
+        msg = f"[SWAP API] Error getting employees: {e}"
+        print(msg, file=sys.stderr)
+        sys.stderr.flush()
+        return jsonify({"error": str(e), "employees": [], "current_user_id": session.get("user_id")}), 500
+    
+    emp_list = []
+    for e in employees:
+        emp_id = e.get("id")
+        # Skip current user
+        if emp_id == session.get("user_id"):
+            continue
+        
+        # Build name from multiple sources
+        name = f"{e.get('first_name', '')} {e.get('last_name', '')}".strip()
+        if not name:
+            name = e.get('username', '')
+        if not name:
+            name = e.get('email', 'Unknown User')
+        
+        emp_list.append({"id": emp_id, "name": name})
+        print(f"[DEBUG] Added employee: {emp_id} ({name})")
+    
+    result = {
+        "current_user_id": session.get("user_id"),
+        "employees": emp_list
+    }
+    print(f"[DEBUG] Returning {len(emp_list)} employees")
+    return jsonify(result), 200
+
+
+@events_bp.route("/api/employee/<employee_id>/shifts", methods=["GET"])
+def api_get_employee_shifts(employee_id):
+    """Get upcoming shifts for an employee"""
+    if "user_id" not in session:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    company_id = session.get("company_id")
+    all_events = list_events(company_id)
+    
+    # Filter shifts assigned to this employee
+    shifts = []
+    for event in all_events:
+        assigned = event.get("assigned", [])
+        if isinstance(assigned, str):
+            assigned = [s.strip() for s in assigned.split(",") if s.strip()]
+        
+        if employee_id in assigned:
+            # Parse times for better formatting
+            try:
+                start_dt = datetime.fromisoformat(event.get("start", "").replace('Z', '+00:00')) if event.get("start") else None
+                end_dt = datetime.fromisoformat(event.get("end", "").replace('Z', '+00:00')) if event.get("end") else None
+                start_time = start_dt.strftime('%H:%M') if start_dt else ""
+                end_time = end_dt.strftime('%H:%M') if end_dt else ""
+            except:
+                start_time = event.get("start", "").split("T")[1][:5] if "T" in event.get("start", "") else ""
+                end_time = event.get("end", "").split("T")[1][:5] if "T" in event.get("end", "") else ""
+            
+            shifts.append({
+                "id": event.get("id"),
+                "title": event.get("title"),
+                "start": event.get("start"),
+                "end": event.get("end"),
+                "start_time": start_time,
+                "end_time": end_time
+            })
+    
+    return jsonify({"shifts": shifts, "status": "success"})

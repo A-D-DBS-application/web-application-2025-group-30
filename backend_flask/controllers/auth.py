@@ -74,6 +74,7 @@ def register():
     # Auto login - include company_id for multi-tenant support
     session["user_id"] = user["id"]
     session["user_role"] = role
+    session["user_name"] = username
     if user.get("company_id"):
         session["company_id"] = user["company_id"]
     
@@ -96,6 +97,7 @@ def login():
     # Login - include company_id for multi-tenant support
     session["user_id"] = user["id"]
     session["user_role"] = user.get("role", "employee")
+    session["user_name"] = user.get("username", username)
     if user.get("company_id"):
         session["company_id"] = user["company_id"]
     

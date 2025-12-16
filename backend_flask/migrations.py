@@ -60,6 +60,43 @@ def run_migrations():
         except:
             print("✓ company_id in availabilities already exists or skipped")
         
+        # Try to create shift_swaps table
+        try:
+            supabase.table('shift_swaps').select('*').limit(1).execute()
+            print("✓ shift_swaps table exists")
+        except:
+            print("⚠️  shift_swaps table doesn't exist, attempting to create...")
+            try:
+                # Create via SQL using rpc
+                supabase.rpc('create_shift_swaps_table', {}).execute()
+                print("✓ shift_swaps table created")
+            except:
+                # Try direct table operations
+                try:
+                    # Just check if we can access it now
+                    supabase.table('shift_swaps').select('*').limit(0).execute()
+                    print("✓ shift_swaps table created")
+                except Exception as table_err:
+                    print(f"⚠️  Could not create shift_swaps table: {table_err}")
+                    print("ℹ️  You may need to create it manually in Supabase SQL editor with:")
+                    print("""
+CREATE TABLE IF NOT EXISTS public.shift_swaps (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  created_at timestamp DEFAULT now(),
+  initiator_id uuid REFERENCES public.users(id) ON DELETE CASCADE,
+  target_employee_id uuid REFERENCES public.users(id) ON DELETE CASCADE,
+  initiator_shift_id uuid REFERENCES public.events(id) ON DELETE CASCADE,
+  target_shift_id uuid REFERENCES public.events(id) ON DELETE CASCADE,
+  status text DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+  reason text,
+  company_id uuid REFERENCES public.companies(id) ON DELETE CASCADE
+);
+CREATE INDEX idx_shift_swaps_target ON public.shift_swaps(target_employee_id, status);
+CREATE INDEX idx_shift_swaps_initiator ON public.shift_swaps(initiator_id);
+CREATE INDEX idx_shift_swaps_company ON public.shift_swaps(company_id);
+                    """)
+
+        
         print("✓ All migrations completed")
         
     except Exception as e:

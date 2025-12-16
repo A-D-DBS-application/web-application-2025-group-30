@@ -831,3 +831,158 @@ def calculate_statistics(events, employees, availabilities=None):
     stats["employee_stats"].sort(key=lambda x: x['total_hours'], reverse=True)
     
     return stats
+
+# ============ SHIFT SWAP MANAGEMENT ============
+
+def create_shift_swap_request(initiator_id: str, target_employee_id: str, initiator_shift_id: str, target_shift_id: str, reason: str = None) -> Dict:
+    """Create a shift swap request between two employees"""
+    if not supabase:
+        return None
+    
+    try:
+        swap_data = {
+            "initiator_id": initiator_id,
+            "target_employee_id": target_employee_id,
+            "initiator_shift_id": initiator_shift_id,
+            "target_shift_id": target_shift_id,
+            "reason": reason,
+            "status": "pending"
+        }
+        res = supabase.table("shift_swaps").insert(swap_data).execute()
+        if res.data:
+            return res.data[0]
+    except Exception as e:
+        print(f"Error creating shift swap: {e}")
+    return None
+
+
+def get_swap_requests(user_id: str, company_id: str = None) -> List[Dict]:
+    """Get pending swap requests for a user"""
+    if not supabase:
+        return []
+    
+    try:
+        # Get requests where user is the target (needs to respond)
+        res = supabase.table("shift_swaps").select("*").eq("target_employee_id", user_id).eq("status", "pending").execute()
+        if res.data:
+            enriched = []
+            for swap in res.data:
+                swap_info = {
+                    "id": swap.get("id"),
+                    "initiator_id": swap.get("initiator_id"),
+                    "target_employee_id": swap.get("target_employee_id"),
+                    "reason": swap.get("reason", ""),
+                    "status": swap.get("status", "pending")
+                }
+                
+                # Get initiator info
+                initiator = get_user_by_id(swap['initiator_id'])
+                if initiator:
+                    swap_info['initiator_name'] = initiator.get('name') or initiator.get('username', 'Unknown')
+                else:
+                    swap_info['initiator_name'] = 'Unknown'
+                
+                # Get both shifts
+                try:
+                    init_shift = supabase.table("events").select("title,start,end").eq("id", swap['initiator_shift_id']).execute()
+                    if init_shift.data:
+                        shift = init_shift.data[0]
+                        swap_info['initiator_shift_title'] = shift.get('title', 'Unknown')
+                        swap_info['initiator_shift_start'] = shift.get('start', '')
+                    
+                    target_shift = supabase.table("events").select("title,start,end").eq("id", swap['target_shift_id']).execute()
+                    if target_shift.data:
+                        shift = target_shift.data[0]
+                        swap_info['target_shift_title'] = shift.get('title', 'Unknown')
+                        swap_info['target_shift_start'] = shift.get('start', '')
+                except Exception as e:
+                    print(f"Error fetching shift info: {e}")
+                    swap_info['initiator_shift_title'] = 'Unknown'
+                    swap_info['target_shift_title'] = 'Unknown'
+                
+                enriched.append(swap_info)
+            return enriched
+    except Exception as e:
+        print(f"Error fetching swap requests: {e}")
+    
+    return []
+
+
+def approve_shift_swap(swap_id: str, approver_id: str = None) -> bool:
+    """Approve a shift swap - swap the assignments
+    
+    Args:
+        swap_id: ID of the swap request
+        approver_id: ID of the user approving (should be target_employee_id for security)
+    
+    Returns:
+        True if swap approved, False otherwise
+    """
+    if not supabase:
+        return False
+    
+    try:
+        swap = supabase.table("shift_swaps").select("*").eq("id", swap_id).execute()
+        if not swap.data:
+            return False
+        
+        swap_info = swap.data[0]
+        initiator_id = swap_info['initiator_id']
+        target_id = swap_info['target_employee_id']
+        init_shift_id = swap_info['initiator_shift_id']
+        target_shift_id = swap_info['target_shift_id']
+        
+        # SECURITY: If approver_id provided, verify they are the target employee
+        if approver_id and approver_id != target_id:
+            print(f"Security: User {approver_id} tried to approve swap for {target_id}")
+            return False
+        
+        # Get current assignments
+        init_assign = supabase.table("event_assignments").select("*").eq("event_id", init_shift_id).eq("user_id", initiator_id).execute()
+        target_assign = supabase.table("event_assignments").select("*").eq("event_id", target_shift_id).eq("user_id", target_id).execute()
+        
+        if not init_assign.data or not target_assign.data:
+            return False
+        
+        # Swap assignments
+        supabase.table("event_assignments").update({"user_id": target_id}).eq("id", init_assign.data[0]['id']).execute()
+        supabase.table("event_assignments").update({"user_id": initiator_id}).eq("id", target_assign.data[0]['id']).execute()
+        
+        # Mark swap as approved
+        supabase.table("shift_swaps").update({"status": "approved"}).eq("id", swap_id).execute()
+        return True
+    except Exception as e:
+        print(f"Error approving swap: {e}")
+    
+    return False
+
+
+def reject_shift_swap(swap_id: str, rejecter_id: str = None) -> bool:
+    """Reject a shift swap request
+    
+    Args:
+        swap_id: ID of the swap request
+        rejecter_id: ID of the user rejecting (should be target_employee_id for security)
+    
+    Returns:
+        True if swap rejected, False otherwise
+    """
+    if not supabase:
+        return False
+    
+    try:
+        swap = supabase.table("shift_swaps").select("*").eq("id", swap_id).execute()
+        if not swap.data:
+            return False
+        
+        # SECURITY: If rejecter_id provided, verify they are the target employee
+        if rejecter_id and swap.data[0]['target_employee_id'] != rejecter_id:
+            print(f"Security: User {rejecter_id} tried to reject swap meant for {swap.data[0]['target_employee_id']}")
+            return False
+        
+        supabase.table("shift_swaps").update({"status": "rejected"}).eq("id", swap_id).execute()
+        return True
+    except Exception as e:
+        print(f"Error rejecting swap: {e}")
+    
+    return False
