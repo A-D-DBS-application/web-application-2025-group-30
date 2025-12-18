@@ -174,3 +174,4 @@ This is an academic project for a programming course. Contributions should focus
 Academic project - see course requirements for usage terms.
 ## Link to audio/video recording of feedback sessions with  external partner
 https://ugentbe-my.sharepoint.com/:v:/g/personal/viktor_walravens_ugent_be/IQBliQ_LfeJ6RKcuD-5ybIGyAZ0ryFH2BlIWO1IuOKLV2FM
+
