@@ -7,9 +7,9 @@
 
     <!-- Period Selector -->
     <div style="margin-bottom: 1.5rem; display: flex; gap: 0.5rem;">
-        <a href="/statistics?period=all" class="btn {% if period == 'all' %}btn-primary{% else %}btn-secondary{% endif %}" style="text-decoration: none;">All Time</a>
-        <a href="/statistics?period=week" class="btn {% if period == 'week' %}btn-primary{% else %}btn-secondary{% endif %}" style="text-decoration: none;">This Week</a>
-        <a href="/statistics?period=month" class="btn {% if period == 'month' %}btn-primary{% else %}btn-secondary{% endif %}" style="text-decoration: none;">This Month</a>
+        <a href="{{ url_for('main.statistics', period='all') }}" class="btn {% if period == 'all' %}btn-primary{% else %}btn-secondary{% endif %}" style="text-decoration: none;">All Time</a>
+        <a href="{{ url_for('main.statistics', period='week') }}" class="btn {% if period == 'week' %}btn-primary{% else %}btn-secondary{% endif %}" style="text-decoration: none;">This Week</a>
+        <a href="{{ url_for('main.statistics', period='month') }}" class="btn {% if period == 'month' %}btn-primary{% else %}btn-secondary{% endif %}" style="text-decoration: none;">This Month</a>
     </div>
 
     <!-- Overview Cards -->

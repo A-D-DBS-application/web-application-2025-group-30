@@ -1,12 +1,20 @@
 {% extends "layout.html" %}
 {% block content %}
 <div class="container">
+    <!-- Company Header -->
+    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 1.5rem; border-radius: 8px; margin-bottom: 1.5rem;">
+        <h1 style="margin: 0;">{{ company_name or 'Company' }}</h1>
+    </div>
+
     <div style="display: grid; grid-template-columns: 1fr 320px; gap: 1.5rem;">
         <!-- Calendar and Availability Form Section -->
         <div>
             <!-- Calendar Section -->
             <div class="card" style="padding: 1.5rem; margin-bottom: 1.5rem;">
-                <h2 style="margin-top: 0;">My Schedule</h2>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                    <h2 style="margin: 0;">My Schedule</h2>
+                    <a href="{{ url_for('ical.subscribe_info') }}" class="btn btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.85rem; text-decoration: none;">📅 Subscribe to Calendar</a>
+                </div>
                 <div id="calendar" style="min-height: 500px;">
                     {% set month_names = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'] %}
                     
@@ -79,21 +87,50 @@
             <!-- Submit Availability Form -->
             <div class="card" style="padding: 1.5rem;">
                 <h3 style="margin-top: 0;">Submit Availability</h3>
-                <form action="/availability/submit" method="POST" style="font-size: 0.9rem;">
-                    <div class="form-group">
-                        <label style="font-size: 0.85rem;">Start</label>
-                        <input type="datetime-local" name="start" required style="font-size: 0.85rem;">
+                <form action="{{ url_for('availability.submit_availability') }}" method="POST" style="font-size: 0.9rem;">
+                    <div style="margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid #e0e0e0;">
+                        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.9rem;">
+                            <input type="checkbox" id="alwaysAvailable" name="always_available" value="true" style="width: 18px; height: 18px; cursor: pointer;">
+                            <span>I'm always available (all shifts)</span>
+                        </label>
+                        <p style="font-size: 0.75rem; color: var(--text-light); margin: 0.5rem 0 0 1.5rem;">Check this if you can work any shift without time constraints</p>
                     </div>
-                    <div class="form-group">
-                        <label style="font-size: 0.85rem;">End</label>
-                        <input type="datetime-local" name="end" required style="font-size: 0.85rem;">
+                    
+                    <div id="timeRangeFields" style="display: block;">
+                        <div class="form-group">
+                            <label style="font-size: 0.85rem;">Start</label>
+                            <input type="datetime-local" name="start" style="font-size: 0.85rem;">
+                        </div>
+                        <div class="form-group">
+                            <label style="font-size: 0.85rem;">End</label>
+                            <input type="datetime-local" name="end" style="font-size: 0.85rem;">
+                        </div>
                     </div>
+                    
                     <div class="form-group">
                         <label style="font-size: 0.85rem;">Note</label>
                         <input type="text" name="note" placeholder="e.g. Prefer morning shifts" style="font-size: 0.85rem;">
                     </div>
                     <button type="submit" class="btn btn-secondary" style="width: 100%; padding: 0.5rem; font-size: 0.85rem;">Submit</button>
                 </form>
+                <script>
+                    const alwaysAvailableCheckbox = document.getElementById('alwaysAvailable');
+                    const timeRangeFields = document.getElementById('timeRangeFields');
+                    const startInput = document.querySelector('input[name="start"]');
+                    const endInput = document.querySelector('input[name="end"]');
+                    
+                    alwaysAvailableCheckbox.addEventListener('change', function() {
+                        if (this.checked) {
+                            timeRangeFields.style.display = 'none';
+                            startInput.removeAttribute('required');
+                            endInput.removeAttribute('required');
+                        } else {
+                            timeRangeFields.style.display = 'block';
+                            startInput.setAttribute('required', 'required');
+                            endInput.setAttribute('required', 'required');
+                        }
+                    });
+                </script>
             </div>
         </div>
         
@@ -114,6 +151,9 @@
                             <div style="font-size: 0.8rem; color: var(--text-light); margin-bottom: 0.25rem;">{{ event.start.split('T')[1][:5] }} - {{ event.end.split('T')[1][:5] }}</div>
                             <div style="font-size: 0.8rem; margin-top: 0.5rem;">
                                 <strong>Location:</strong> {{ event.location or 'TBD' }}
+                            </div>
+                            <div style="display: flex; gap: 0.5rem; margin-top: 0.75rem;">
+                                <button class="btn btn-warning" style="padding: 0.4rem 0.8rem; font-size: 0.75rem; flex: 1;" onclick="openSwapModal('{{ event.id }}', '{{ event.title }}', '{{ event.start.split('T')[0] }}T{{ event.start.split('T')[1] }}', '{{ event.end.split('T')[0] }}T{{ event.end.split('T')[1] }}')">🔄 Swap This</button>
                             </div>
                         </div>
                     {% endfor %}
@@ -148,7 +188,7 @@
                         
                         <div class="event-widget card" style="padding: 0.75rem; font-size: 0.85rem;">
                             <div style="font-weight: bold; margin-bottom: 0.25rem;">{{ event.title }}</div>
-                            <div style="font-size: 0.75rem; color: var(--text-light); margin-bottom: 0.25rem;">{{ event.start.split('T')[0]|format_date }} • {{ event.start.split('T')[1][:5] }}</div>
+                            <div style="font-size: 0.75rem; color: var(--text-light); margin-bottom: 0.25rem;">{{ event.start.split('T')[0]|format_date }} • {{ event.start.split('T')[1][:5] }} - {{ event.end.split('T')[1][:5] }}</div>
                             <div style="font-size: 0.75rem; color: var(--text-light); margin-bottom: 0.5rem;">{{ event.location or 'TBD' }}</div>
                             
                             {% if is_pending %}
@@ -166,6 +206,52 @@
             </div>
 
             <h3>Your Availability</h3>
+            
+            <!-- Swap Modal -->
+            <div id="swapModal" class="modal">
+                <div class="modal-content">
+                    <span class="close-modal" onclick="closeSwapModal()">&times;</span>
+                    <h3 style="margin-top: 0; color: var(--primary);">Request a Shift Swap</h3>
+                    
+                    <div class="form-group">
+                        <label>My Shift:</label>
+                        <input type="hidden" id="myShiftId">
+                        <div id="myShiftInfo" style="padding: 0.75rem; background: var(--light-gray); border-radius: 4px; margin-bottom: 1rem; font-size: 0.9rem;"></div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Swap with Employee:</label>
+                        <select id="targetEmployee" style="padding: 0.75rem; border: 2px solid var(--border-color); border-radius: 4px; width: 100%; font-family: inherit; font-size: 0.95rem;" onchange="loadTargetShifts()">
+                            <option value="">Select an employee...</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Their Shift:</label>
+                        <select id="targetShift" style="padding: 0.75rem; border: 2px solid var(--border-color); border-radius: 4px; width: 100%; font-family: inherit; font-size: 0.95rem;">
+                            <option value="">Select their shift...</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Reason (optional):</label>
+                        <textarea id="swapReason" placeholder="Why do you want to swap?" style="padding: 0.75rem; border: 2px solid var(--border-color); border-radius: 4px; font-family: inherit; resize: vertical; font-size: 0.95rem; width: 100%;"></textarea>
+                    </div>
+                    
+                    <div id="swapValidation" style="display: none; padding: 0.75rem; background: rgba(239, 83, 80, 0.1); border-left: 4px solid var(--danger); color: var(--danger); margin-bottom: 1rem; border-radius: 4px; font-size: 0.9rem;"></div>
+                    
+                    <div style="display: flex; gap: 0.75rem; justify-content: flex-end;">
+                        <button class="btn btn-secondary" onclick="closeSwapModal()">Cancel</button>
+                        <button class="btn btn-primary" onclick="submitSwapRequest()">Send Swap Request</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Pending Swap Requests -->
+            <h3>Swap Requests For You</h3>
+            <div id="pendingSwaps" style="display: flex; flex-direction: column; gap: 1rem; margin-bottom: 1.5rem; max-height: 300px; overflow-y: auto; padding-right: 0.5rem;">
+                <p style="color: var(--text-light); font-size: 0.9rem;">Loading requests...</p>
+            </div>
             
             <!-- Upcoming Availability -->
             <h4 style="font-size: 0.9rem; color: var(--text-light); margin: 0.5rem 0;">Upcoming</h4>
@@ -217,4 +303,344 @@
         </div>
     </div>
 </div>
+
+<style>
+    .modal {
+        display: none;
+        position: fixed;
+        z-index: 1000;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.6);
+        animation: fadeIn 0.2s ease-in;
+    }
+    
+    @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+    
+    .modal.active {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .modal-content {
+        background-color: white;
+        padding: 2rem;
+        border-radius: 8px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+        width: 90%;
+        max-width: 500px;
+        animation: slideIn 0.3s ease-out;
+    }
+    
+    @keyframes slideIn {
+        from {
+            transform: translateY(-50px);
+            opacity: 0;
+        }
+        to {
+            transform: translateY(0);
+            opacity: 1;
+        }
+    }
+    
+    .close-modal {
+        color: #aaa;
+        float: right;
+        font-size: 28px;
+        font-weight: bold;
+        cursor: pointer;
+        line-height: 1;
+    }
+    
+    .close-modal:hover,
+    .close-modal:focus {
+        color: #000;
+    }
+    
+    .form-group {
+        margin-bottom: 1rem;
+    }
+    
+    .form-group label {
+        display: block;
+        margin-bottom: 0.5rem;
+        font-weight: 500;
+        color: var(--primary);
+    }
+    
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+        width: 100%;
+        box-sizing: border-box;
+    }
+</style>
+
+<script>
+    let allEmployees = [];
+    let currentUserId = null;
+    
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log('Page loaded, DOM ready');
+        console.log('Current URL:', window.location.href);
+        console.log('Session cookies:', document.cookie);
+        loadEmployeesAndSwaps();
+        setupModalClose();
+    });
+    
+    function setupModalClose() {
+        const modal = document.getElementById('swapModal');
+        window.addEventListener('click', function(event) {
+            if (event.target === modal) {
+                closeSwapModal();
+            }
+        });
+    }
+    
+    function loadEmployeesAndSwaps() {
+        fetch('/events/api/employees')
+            .then(res => {
+                console.log('Response status:', res.status);
+                if (!res.ok) {
+                    return res.text().then(text => {
+                        throw new Error(`HTTP ${res.status}: ${text.substring(0, 100)}`);
+                    });
+                }
+                return res.json();
+            })
+            .then(data => {
+                console.log('Employees data:', data);
+                currentUserId = data.current_user_id;
+                allEmployees = data.employees.filter(e => e.id !== currentUserId);
+                console.log('Filtered employees:', allEmployees);
+                
+                // Populate employee selector
+                const select = document.getElementById('targetEmployee');
+                if (allEmployees.length === 0) {
+                    const option = document.createElement('option');
+                    option.value = '';
+                    option.textContent = 'No other employees available';
+                    select.appendChild(option);
+                } else {
+                    allEmployees.forEach(emp => {
+                        const option = document.createElement('option');
+                        option.value = emp.id;
+                        option.textContent = emp.name || `Employee ${emp.id.substring(0, 8)}`;
+                        select.appendChild(option);
+                    });
+                }
+                
+                console.log('Employee dropdown populated with', allEmployees.length, 'employees');
+            })
+            .catch(err => {
+                console.error('Failed to load employees:', err);
+                alert('Failed to load employees: ' + err.message);
+                document.getElementById('targetEmployee').innerHTML = '<option value="">Error loading employees</option>';
+            });
+        
+        // Load pending swaps
+        loadPendingSwaps();
+    }
+    
+    function loadPendingSwaps() {
+        fetch('/events/swaps/pending')
+            .then(res => {
+                if (!res.ok) {
+                    throw new Error(`HTTP ${res.status}`);
+                }
+                return res.json();
+            })
+            .then(data => {
+                const container = document.getElementById('pendingSwaps');
+                container.innerHTML = '';
+                
+                if (!data.swaps || data.swaps.length === 0) {
+                    container.innerHTML = '<p style="color: var(--text-light); font-size: 0.9rem;">No pending swap requests.</p>';
+                    return;
+                }
+                
+                data.swaps.forEach(swap => {
+                    const swapCard = document.createElement('div');
+                    swapCard.className = 'event-widget card';
+                    swapCard.style.cssText = 'padding: 1rem; font-size: 0.9rem; border-left: 4px solid #ffc107;';
+                    swapCard.innerHTML = `
+                        <div style="font-weight: bold; margin-bottom: 0.5rem; color: var(--primary);">
+                            ${swap.initiator_name} wants to swap
+                        </div>
+                        <div style="font-size: 0.85rem; color: var(--text-light); margin-bottom: 0.5rem;">
+                            <strong>Their shift:</strong> ${swap.initiator_shift_title}<br>
+                            <strong>For your shift:</strong> ${swap.target_shift_title}
+                        </div>
+                        ${swap.reason ? `<div style="font-size: 0.85rem; color: var(--text-light); margin-bottom: 0.5rem;"><em>${swap.reason}</em></div>` : ''}
+                        <div style="display: flex; gap: 0.5rem; margin-top: 0.75rem;">
+                            <button class="btn btn-primary" style="flex: 1; padding: 0.5rem;" onclick="approveSwap('${swap.id}')">✓ Approve</button>
+                            <button class="btn btn-secondary" style="flex: 1; padding: 0.5rem;" onclick="rejectSwap('${swap.id}')">✗ Reject</button>
+                        </div>
+                    `;
+                    container.appendChild(swapCard);
+                });
+            })
+            .catch(err => {
+                console.error('Failed to load pending swaps:', err);
+                const container = document.getElementById('pendingSwaps');
+                container.innerHTML = '<p style="color: var(--text-light); font-size: 0.9rem;">Error loading swap requests</p>';
+            });
+    }
+    
+    function openSwapModal(eventId, eventTitle, startTime, endTime) {
+        const modal = document.getElementById('swapModal');
+        document.getElementById('myShiftId').value = eventId;
+        
+        // Format times nicely
+        const startDate = new Date(startTime);
+        const endDate = new Date(endTime);
+        const startStr = startDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+        const endStr = endDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+        
+        document.getElementById('myShiftInfo').textContent = `${eventTitle} • ${startStr} - ${endStr}`;
+        document.getElementById('targetEmployee').value = '';
+        document.getElementById('targetShift').innerHTML = '<option value="">Select their shift...</option>';
+        document.getElementById('swapReason').value = '';
+        document.getElementById('swapValidation').style.display = 'none';
+        modal.classList.add('active');
+    }
+    
+    function closeSwapModal() {
+        const modal = document.getElementById('swapModal');
+        modal.classList.remove('active');
+    }
+    
+    function loadTargetShifts() {
+        const employeeId = document.getElementById('targetEmployee').value;
+        console.log('Loading shifts for employee:', employeeId);
+        
+        if (!employeeId) {
+            document.getElementById('targetShift').innerHTML = '<option value="">Select their shift...</option>';
+            return;
+        }
+        
+        fetch(`/events/api/employee/${employeeId}/shifts`)
+            .then(res => res.json())
+            .then(data => {
+                console.log('Shifts data:', data);
+                const select = document.getElementById('targetShift');
+                select.innerHTML = '<option value="">Select their shift...</option>';
+                
+                if (data.shifts && data.shifts.length > 0) {
+                    data.shifts.forEach(shift => {
+                        const option = document.createElement('option');
+                        option.value = shift.id;
+                        option.textContent = `${shift.title} • ${shift.start_time} - ${shift.end_time}`;
+                        select.appendChild(option);
+                    });
+                    console.log('Loaded', data.shifts.length, 'shifts');
+                } else {
+                    console.log('No shifts found for this employee');
+                }
+            })
+            .catch(err => {
+                console.error('Failed to load shifts:', err);
+                alert('Failed to load shifts: ' + err.message);
+            });
+    }
+    
+    function submitSwapRequest() {
+        const myShiftId = document.getElementById('myShiftId').value;
+        const targetEmployeeId = document.getElementById('targetEmployee').value;
+        const targetShiftId = document.getElementById('targetShift').value;
+        const reason = document.getElementById('swapReason').value;
+        
+        console.log('Submitting swap request:', {
+            myShiftId,
+            targetEmployeeId,
+            targetShiftId,
+            reason
+        });
+        
+        if (!targetEmployeeId || !targetShiftId) {
+            alert('Please select an employee and their shift.');
+            return;
+        }
+        
+        fetch('/events/swap/request', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                target_employee_id: targetEmployeeId,
+                initiator_shift_id: myShiftId,
+                target_shift_id: targetShiftId,
+                reason: reason
+            })
+        })
+        .then(res => {
+            console.log('Response status:', res.status);
+            if (!res.ok) {
+                return res.text().then(text => {
+                    console.error('Error response:', text);
+                    throw new Error(`HTTP ${res.status}: ${text}`);
+                });
+            }
+            return res.json();
+        })
+        .then(data => {
+            console.log('Success response:', data);
+            if (data.status === 'success') {
+                alert('Swap request sent!');
+                closeSwapModal();
+                loadPendingSwaps();
+            } else if (data.issues) {
+                const validation = document.getElementById('swapValidation');
+                validation.innerHTML = '<strong>Validation Issues:</strong><ul style="margin: 0.5rem 0;">' + 
+                    data.issues.map(issue => `<li>${issue}</li>`).join('') + 
+                    '</ul>';
+                validation.style.display = 'block';
+            } else {
+                alert('Error: ' + (data.error || 'Unknown error'));
+            }
+        })
+        .catch(err => {
+            console.error('Error:', err);
+            alert('Failed to submit swap request: ' + err.message);
+        });
+    }
+    
+    function approveSwap(swapId) {
+        if (!confirm('Approve this shift swap?')) return;
+        
+        fetch(`/events/swap/${swapId}/approve`, { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    alert('Swap approved!');
+                    loadPendingSwaps();
+                } else {
+                    alert('Failed to approve swap: ' + (data.message || 'Unknown error'));
+                }
+            })
+            .catch(err => alert('Error: ' + err.message));
+    }
+    
+    function rejectSwap(swapId) {
+        if (!confirm('Reject this shift swap?')) return;
+        
+        fetch(`/events/swap/${swapId}/reject`, { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    alert('Swap rejected.');
+                    loadPendingSwaps();
+                } else {
+                    alert('Failed to reject swap: ' + (data.message || 'Unknown error'));
+                }
+            })
+            .catch(err => alert('Error: ' + err.message));
+    }
+</script>
 {% endblock %}

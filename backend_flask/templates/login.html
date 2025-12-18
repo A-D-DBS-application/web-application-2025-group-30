@@ -17,11 +17,6 @@
       </div>
       <button type="submit" class="btn btn-primary" style="width: 100%;">Login</button>
     </form>
-    
-    <div style="margin-top: 1.5rem; border-top: 1px solid #e5e7eb; padding-top: 1rem;">
-      <p style="color: var(--text-light);">Don't have an account?</p>
-      <a href="#register" class="btn btn-secondary" style="width: 100%; text-align: center; display: block; box-sizing: border-box;">Create Account</a>
-    </div>
 
     <div id="register" style="margin-top: 2rem; padding-top: 2rem; border-top: 2px dashed #e5e7eb;">
       <h3 style="color: var(--primary); margin-top: 0;">Register</h3>
@@ -32,14 +27,35 @@
           </div>
           <div class="form-group">
             <label for="regRole">Role</label>
-            <select id="regRole" name="role">
+            <select id="regRole" name="role" onchange="toggleCompanyName()">
               <option value="employee" selected>Employee</option>
               <option value="manager">Manager</option>
             </select>
+          </div>
+          <div class="form-group" id="companyNameGroup" style="display: none;">
+            <label for="regCompanyName">Company Name <span style="color: var(--info); font-size: 0.9em;">(Only for new managers)</span></label>
+            <input type="text" id="regCompanyName" name="company_name" placeholder="e.g., Acme Corp" />
+          </div>
+          <div class="form-group">
+            <label for="regCode">Company Registration Code <span style="color: var(--info); font-size: 0.9em;">(For employees joining existing company)</span></label>
+            <input type="text" id="regCode" name="registration_code" placeholder="e.g., ABC123XY" style="text-transform: uppercase;" />
           </div>
           <button type="submit" class="btn btn-success" style="width: 100%;">Register & Login</button>
       </form>
     </div>
   </div>
 </div>
+
+<script>
+function toggleCompanyName() {
+  const role = document.getElementById('regRole').value;
+  const companyNameGroup = document.getElementById('companyNameGroup');
+  
+  if (role === 'manager') {
+    companyNameGroup.style.display = 'block';
+  } else {
+    companyNameGroup.style.display = 'none';
+  }
+}
+</script>
 {% endblock %}
