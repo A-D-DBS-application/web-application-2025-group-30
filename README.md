@@ -1,6 +1,6 @@
 # Personnel Scheduler
 
-A web application for intelligent personnel allocation and shift scheduling. Features an ILP-inspired assignment algorithm with constraint satisfaction, multi-tenant company support, and comprehensive availability management.
+We have created a web application for intelligent personnel allocation and shift scheduling. It features an ILP-inspired assignment algorithm with constraint satisfaction, multi-tenant company support, and comprehensive availability management.
 
 ## Features
 
@@ -172,3 +172,5 @@ This is an academic project for a programming course. Contributions should focus
 ## License
 
 Academic project - see course requirements for usage terms.
+## Link to audio/video recording of feedback sessions with  external partner
+https://ugentbe-my.sharepoint.com/:v:/g/personal/viktor_walravens_ugent_be/IQBliQ_LfeJ6RKcuD-5ybIGyAZ0ryFH2BlIWO1IuOKLV2FM
