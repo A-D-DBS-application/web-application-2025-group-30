@@ -170,8 +170,10 @@ This is an academic project for a programming course. Contributions should focus
 - UI/UX improvements
 
 ## License
-
 Academic project - see course requirements for usage terms.
+
 ## Link to audio/video recording of feedback sessions with  external partner
 https://ugentbe-my.sharepoint.com/:v:/g/personal/viktor_walravens_ugent_be/IQBliQ_LfeJ6RKcuD-5ybIGyAZ0ryFH2BlIWO1IuOKLV2FM
+https://ugentbe-my.sharepoint.com/personal/viktor_walravens_ugent_be/_layouts/15/stream.aspx?id=%2Fpersonal%2Fviktor_walravens_ugent_be%2FDocuments%2FBijlagen%2FFeedback+Ten+Bosse.m4a&startedResponseCatch=true&referrer=StreamWebApp.Web&referrerScenario=AddressBarCopied.view.c6567bf2-33e8-4c18-ac81-4f2390a6ca7b
+
 
